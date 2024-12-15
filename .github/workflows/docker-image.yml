@@ -14,5 +14,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Log in to Docker Hub
+      env:
+        DOCKER_HUB_USERNAME: ${{ secrets.maclucky.DOCKER_HUB_USERNAME }}
+        DOCKER_HUB_PASSWORD: ${{ secrets.maclucky.DOCKER_HUB_PASSWORD }}
+      run: echo "${DOCKER_HUB_PASSWORD}" | docker login -u "${DOCKER_HUB_USERNAME}" --password-stdin
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag kubernetes-ping-exporter:$(date +%s)
+      run: docker build . --file Dockerfile --tag maclucky/kubernetes-ping-exporter:$(date +%s)
+    - name: Push the Docker image
+      run: docker push maclucky/kubernetes-ping-exporter:$(date +%s)
