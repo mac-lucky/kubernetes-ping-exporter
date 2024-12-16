@@ -6,6 +6,7 @@ import os
 from statistics import mean, stdev
 from concurrent.futures import ThreadPoolExecutor
 import threading
+import signal
 
 # Initialize Prometheus metrics
 ping_rtt_best = Gauge('ping_rtt_best_seconds', 'Best round trip time', ['source', 'destination', 'source_nodename', 'dest_nodename', 'source_podname'])
@@ -14,6 +15,17 @@ ping_rtt_mean = Gauge('ping_rtt_mean_seconds', 'Mean round trip time', ['source'
 ping_rtt_std_dev = Gauge('ping_rtt_std_deviation_seconds', 'Standard deviation of RTT', ['source', 'destination', 'source_nodename', 'dest_nodename', 'source_podname'])
 ping_loss_ratio = Gauge('ping_loss_ratio', 'Packet loss ratio', ['source', 'destination', 'source_nodename', 'dest_nodename', 'source_podname'])
 ping_up = Gauge('ping_up', 'Target reachability status (1=up, 0=down)', ['source', 'destination', 'source_nodename', 'dest_nodename', 'source_podname'])
+
+terminate = False
+
+def signal_handler(sig, frame):
+    global terminate
+    print("Termination signal received, exiting...")
+    terminate = True
+
+# Register signal handler
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 def get_pod_ips():
     try:
@@ -126,7 +138,7 @@ def main():
     # Create thread pool
     max_workers = min(32, os.cpu_count() * 4)  # Limit maximum number of threads
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        while True:
+        while not terminate:
             print("\n--- Starting new ping cycle ---")
             # Get IPs and nodenames of other pods in the DaemonSet
             target_info = get_pod_ips()
@@ -156,6 +168,8 @@ def main():
                     print(f"Error in ping thread: {e}")
             
             time.sleep(15)  # Wait before next round of pings
+
+    print("Exiting main loop, shutting down...")
 
 if __name__ == '__main__':
     main()
