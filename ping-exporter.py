@@ -6,6 +6,7 @@ import time
 import os
 from statistics import mean, stdev
 from concurrent.futures import ThreadPoolExecutor
+import concurrent.futures
 import threading
 from typing import List, Tuple, Dict
 import multiprocessing
@@ -27,7 +28,7 @@ METRICS = {
     'ping_up': Gauge('ping_up', 'Target reachability status (1=up, 0=down)', ['source', 'destination', 'source_nodename', 'dest_nodename', 'source_podname'])
 }
 
-def get_pod_ips() -> List[Tuple[str, str, str]]:
+def get_pod_ips() -> List<Tuple[str, str, str]]:
     try:
         config.load_incluster_config()
         v1 = client.CoreV1Api()
@@ -127,8 +128,8 @@ def main():
     cpu_count = multiprocessing.cpu_count()
     max_workers = min(32, cpu_count * 4)
     
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        while True:
+    while True:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             try:
                 target_info = get_pod_ips()
                 additional_ips = get_additional_ips()
@@ -153,8 +154,8 @@ def main():
             
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
-            
-            time.sleep(15)
+        
+        time.sleep(15)
 
 if __name__ == '__main__':
     main()

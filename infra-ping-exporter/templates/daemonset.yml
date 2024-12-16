@@ -20,6 +20,7 @@ spec:
       containers:
       - name: ping-exporter
         image: maclucky/kubernetes-ping-exporter
+        imagePullPolicy: Always
         env:
         - name: POD_IP
           valueFrom:
