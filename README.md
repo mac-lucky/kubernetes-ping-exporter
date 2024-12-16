@@ -4,6 +4,10 @@ Install it with helm
 ```
 helm install infra-ping-exporter infra-ping-exporter --namespace monitoring --create-namespace --wait
 ```
+Upgrade it with helm
+```
+helm upgrade infra-ping-exporter infra-ping-exporter --namespace monitoring --wait
+```
 
 Script runs every 15 seconds and pings all pods in daemonset. It exports the results in prometheus format on port 9107.
 
