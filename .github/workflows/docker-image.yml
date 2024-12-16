@@ -21,6 +21,13 @@ jobs:
       with:
         username: ${{ secrets.DOCKER_HUB_USERNAME }}
         password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+    
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
@@ -48,16 +55,15 @@ jobs:
     - name: Build and push to Docker Hub
       uses: docker/build-push-action@v6
       with:
+        platforms: linux/amd64,linux/arm64
         push: true
-        tags: maclucky/kubernetes-ping-exporter:${{ env.NEW_VERSION }}
+        tags: |
+          maclucky/kubernetes-ping-exporter:${{ env.NEW_VERSION }}
+          maclucky/kubernetes-ping-exporter:latest
+          ghcr.io/mac-lucky/kubernetes-ping-exporter:${{ env.NEW_VERSION }}
+          ghcr.io/mac-lucky/kubernetes-ping-exporter:latest
 
-    - name: Build and push to GitHub Packages
-      uses: docker/build-push-action@v6
-      with:
-        push: true
-        tags: ghcr.io/maclucky/kubernetes-ping-exporter:${{ env.NEW_VERSION }}
-        registry: ghcr.io
-        token: ${{ secrets.GITHUB_TOKEN }}
+
 
     - name: Commit version update
       run: |
