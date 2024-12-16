@@ -59,10 +59,10 @@ jobs:
         platforms: linux/amd64,linux/arm64
         push: true
         tags: |
-          maclucky/prom/kubernetes-ping-exporter:${{ env.NEW_VERSION }}
-          maclucky/prom/kubernetes-ping-exporter:latest
-          ghcr.io/mac-lucky/prom/kubernetes-ping-exporter:${{ env.NEW_VERSION }}
-          ghcr.io/mac-lucky/prom/kubernetes-ping-exporter:latest
+          maclucky/kubernetes-ping-exporter:${{ env.NEW_VERSION }}
+          maclucky/kubernetes-ping-exporter:latest
+          ghcr.io/mac-lucky/kubernetes-ping-exporter:${{ env.NEW_VERSION }}
+          ghcr.io/mac-lucky/kubernetes-ping-exporter:latest
 
 
 
