@@ -16,16 +16,14 @@ ping_rtt_std_dev = Gauge('ping_rtt_std_deviation_seconds', 'Standard deviation o
 ping_loss_ratio = Gauge('ping_loss_ratio', 'Packet loss ratio', ['source', 'destination', 'source_nodename', 'dest_nodename', 'source_podname'])
 ping_up = Gauge('ping_up', 'Target reachability status (1=up, 0=down)', ['source', 'destination', 'source_nodename', 'dest_nodename', 'source_podname'])
 
-terminate = False
+shutdown_event = threading.Event()
 
-def signal_handler(sig, frame):
-    global terminate
-    print("Termination signal received, exiting...")
-    terminate = True
+def signal_handler(signum, frame):
+    print(f"Received termination signal (signum: {signum}). Exiting...")
+    shutdown_event.set()
 
-# Register signal handler
-signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
+signal.signal(signal.SIGINT, signal_handler)
 
 def get_pod_ips():
     try:
@@ -138,7 +136,7 @@ def main():
     # Create thread pool
     max_workers = min(32, os.cpu_count() * 4)  # Limit maximum number of threads
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        while not terminate:
+        while not shutdown_event.is_set():
             print("\n--- Starting new ping cycle ---")
             # Get IPs and nodenames of other pods in the DaemonSet
             target_info = get_pod_ips()
@@ -160,16 +158,20 @@ def main():
                 ) for target in target_info
             ]
             
-            # Wait for all pings to complete
+            # Wait for all pings to complete or exit if shutting down
             for future in futures:
+                if shutdown_event.is_set():
+                    break
                 try:
                     future.result()
                 except Exception as e:
                     print(f"Error in ping thread: {e}")
             
-            time.sleep(15)  # Wait before next round of pings
+            # Wait for 15 seconds or exit if shutting down
+            if shutdown_event.wait(15):
+                break
 
-    print("Exiting main loop, shutting down...")
+    print("Shutting down...")
 
 if __name__ == '__main__':
     main()
