@@ -35,9 +35,6 @@ jobs:
     
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
-    
-    - name: Set date environment variable
-      run: echo "DATE=$(date +%Y%m%d%H%M%S)" >> $GITHUB_ENV
 
     - name: Read version from file
       id: read_version
@@ -63,8 +60,6 @@ jobs:
           maclucky/kubernetes-ping-exporter:latest
           ghcr.io/mac-lucky/kubernetes-ping-exporter:${{ env.NEW_VERSION }}
           ghcr.io/mac-lucky/kubernetes-ping-exporter:latest
-
-
 
     - name: Commit version update
       run: |
