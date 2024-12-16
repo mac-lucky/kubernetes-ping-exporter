@@ -19,7 +19,7 @@ spec:
       serviceAccountName: ping-exporter
       containers:
       - name: ping-exporter
-        image: maclucky/prom/kubernetes-ping-exporter
+        image: maclucky/kubernetes-ping-exporter
         env:
         - name: POD_IP
           valueFrom:
