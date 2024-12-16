@@ -25,59 +25,51 @@ def signal_handler(signum, frame):
 signal.signal(signal.SIGTERM, signal_handler)
 signal.signal(signal.SIGINT, signal_handler)
 
-def get_pod_ips():
+# Load in-cluster config once
+config.load_incluster_config()
+v1_api = client.CoreV1Api()
+
+def get_pod_ips(v1, namespace, current_pod_ip):
     try:
-        # Load in-cluster config
-        config.load_incluster_config()
-        v1 = client.CoreV1Api()
-        
-        # Get current namespace and pod name from environment variables
-        namespace = os.environ.get('MY_POD_NAMESPACE')
-        current_pod_ip = os.environ.get('POD_IP')
-        current_pod_name = os.environ.get('MY_POD_NAME')
-        
-        # Get pods from the same DaemonSet
-        pods = v1.list_namespaced_pod(namespace=namespace,
-                                    label_selector='app=ping-exporter')
-        
-        pod_info = [(pod.status.pod_ip, pod.spec.node_name, pod.metadata.name) for pod in pods.items if pod.status.pod_ip]
-        
+        # Use passed-in API client 'v1'
+        pods = v1.list_namespaced_pod(
+            namespace=namespace,
+            label_selector='app=ping-exporter'
+        )
+        pod_info = [
+            (pod.status.pod_ip, pod.spec.node_name, pod.metadata.name)
+            for pod in pods.items
+            if pod.status.pod_ip and pod.status.pod_ip != current_pod_ip
+        ]
         print(f"Found {len(pod_info)} pods in the DaemonSet")
-        print(f"Filtered pod IPs (excluding current pod): {pod_info}")
-        # Filter out current pod's IP
-        return [(ip, node, name) for ip, node, name in pod_info if ip != current_pod_ip]
-    except Exception as e:
-        print(f"Error getting pod IPs: {e}")
+        return pod_info
+    except client.exceptions.ApiException as e:
+        print(f"API error getting pod IPs: {e}")
         return []
 
-def get_additional_ips():
+def get_additional_ips(v1, namespace):
     try:
-        config.load_incluster_config()
-        v1 = client.CoreV1Api()
-        
-        namespace = os.environ.get('MY_POD_NAMESPACE')
+        # Use passed-in API client 'v1'
         config_map_name = os.environ.get('CONFIG_MAP_NAME', 'ping-exporter-config')
-        
         config_map = v1.read_namespaced_config_map(config_map_name, namespace)
         additional_ips = config_map.data.get('additional_ips', '')
-        
         print(f"Additional IPs from ConfigMap: {additional_ips}")
         return [ip.strip() for ip in additional_ips.split(',') if ip.strip()]
-    except Exception as e:
-        print(f"Error reading ConfigMap: {e}")
+    except client.exceptions.ApiException as e:
+        print(f"API error reading ConfigMap: {e}")
         return []
 
 def ping_target(target_ip, count=10):
     print(f"Starting ping sequence for {target_ip} ({count} attempts)")
-    rtts = []
-    for _ in range(count):
-        try:
-            rtt = ping3.ping(target_ip, timeout=4)
-            if rtt is not None:
-                rtts.append(rtt)
-        except Exception as e:
-            print(f"Error pinging {target_ip}: {e}")
-            
+    try:
+        rtts = [
+            rtt for rtt in (
+                ping3.ping(target_ip, timeout=4) for _ in range(count)
+            ) if rtt is not None
+        ]
+    except Exception as e:
+        print(f"Error pinging {target_ip}: {e}")
+        return {'up': 0, 'loss_ratio': 1.0}
     if rtts:
         results = {
             'best': min(rtts),
@@ -89,8 +81,9 @@ def ping_target(target_ip, count=10):
         }
         print(f"Ping results for {target_ip}: {results}")
         return results
-    print(f"No successful pings for {target_ip}")
-    return {'up': 0, 'loss_ratio': 1.0}
+    else:
+        print(f"No successful pings for {target_ip}")
+        return {'up': 0, 'loss_ratio': 1.0}
 
 def update_metrics(source_ip, target_ip, source_nodename, dest_nodename, source_podname, results):
     labels = {
@@ -132,21 +125,34 @@ def main():
     source_nodename = os.environ.get('NODE_NAME', 'unknown')
     source_podname = os.environ.get('MY_POD_NAME', 'unknown')
     print(f"Source IP: {source_ip}, Node: {source_nodename}, Pod: {source_podname}")
-    
-    # Create thread pool
-    max_workers = min(32, os.cpu_count() * 4)  # Limit maximum number of threads
+
+    # Cache target IPs
+    target_info_cache = []
+    cache_refresh_interval = 60  # Refresh every 60 seconds
+    last_cache_time = 0
+
+    # Limit the number of worker threads
+    max_workers = min(16, os.cpu_count() * 2)
+
+    # Initialize cycle counter
+    cycle_count = 0
+
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         while not shutdown_event.is_set():
+            current_time = time.time()
+            # Do not cache for the first 3 cycles
+            if cycle_count < 3 or current_time - last_cache_time > cache_refresh_interval:
+                # Refresh targets
+                pod_targets = get_pod_ips(v1_api, namespace, source_ip)
+                additional_targets = [
+                    (ip, 'external', 'external') for ip in get_additional_ips(v1_api, namespace)
+                ]
+                target_info_cache = pod_targets + additional_targets
+                last_cache_time = current_time
+            cycle_count += 1
             print("\n--- Starting new ping cycle ---")
-            # Get IPs and nodenames of other pods in the DaemonSet
-            target_info = get_pod_ips()
-            
-            # Add additional IPs from ConfigMap if configured
-            additional_ips = get_additional_ips()
-            target_info.extend([(ip, 'external', 'external') for ip in additional_ips])
-            
-            print(f"Total targets to ping: {len(target_info)}")
-            
+            print(f"Total targets to ping: {len(target_info_cache)}")
+
             # Submit all ping tasks to the thread pool
             futures = [
                 executor.submit(
@@ -155,10 +161,10 @@ def main():
                     target,
                     source_nodename,
                     source_podname
-                ) for target in target_info
+                ) for target in target_info_cache
             ]
-            
-            # Wait for all pings to complete or exit if shutting down
+
+            # Wait for all pings to complete
             for future in futures:
                 if shutdown_event.is_set():
                     break
@@ -166,7 +172,7 @@ def main():
                     future.result()
                 except Exception as e:
                     print(f"Error in ping thread: {e}")
-            
+
             # Wait for 15 seconds or exit if shutting down
             if shutdown_event.wait(15):
                 break
