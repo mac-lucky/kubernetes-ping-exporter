@@ -12,6 +12,7 @@ jobs:
     environment: maclucky
     permissions:
       contents: write
+      packages: write
     runs-on: ubuntu-latest
 
     steps:
