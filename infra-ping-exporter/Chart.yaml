@@ -1,0 +1,7 @@
+apiVersion: v2
+name: infra-ping-exporter-maclucky
+description: A Helm chart for ping exporter
+type: application
+
+version: 1.0.0
+appVersion: 1.0.0

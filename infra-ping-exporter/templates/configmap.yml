@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ping-exporter-config
+  namespace: monitoring
+data:
+  additional_ips: "1.1.1.1, 8.8.8.8"
