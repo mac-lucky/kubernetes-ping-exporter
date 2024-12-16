@@ -57,8 +57,7 @@ jobs:
         push: true
         tags: ghcr.io/maclucky/kubernetes-ping-exporter:${{ env.NEW_VERSION }}
         registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Commit version update
       run: |
