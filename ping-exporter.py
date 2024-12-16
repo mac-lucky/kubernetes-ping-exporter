@@ -130,6 +130,9 @@ def main():
     # Limit the number of worker threads
     max_workers = min(16, os.cpu_count() * 2)
 
+    # Initialize a set to keep track of previous target labels
+    previous_labels = set()
+
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         while not shutdown_event.is_set():
             # Always refresh targets
@@ -140,6 +143,33 @@ def main():
             target_info = pod_targets + additional_targets
             print("\n--- Starting new ping cycle ---")
             print(f"Total targets to ping: {len(target_info)}")
+
+            # Collect current target labels
+            current_labels = set()
+            for target in target_info:
+                target_ip, dest_nodename, dest_podname = target
+                labels = (
+                    source_ip,
+                    target_ip,
+                    source_nodename if source_nodename else 'unknown',
+                    dest_nodename if dest_nodename else 'unknown',
+                    source_podname if source_podname else 'unknown'
+                )
+                current_labels.add(labels)
+
+            # Identify and remove metrics for targets that are no longer valid
+            obsolete_labels = previous_labels - current_labels
+            for labels in obsolete_labels:
+                ping_up.remove(*labels)
+                ping_loss_ratio.remove(*labels)
+                ping_rtt_best.remove(*labels)
+                ping_rtt_worst.remove(*labels)
+                ping_rtt_mean.remove(*labels)
+                ping_rtt_std_dev.remove(*labels)
+                print(f"Removed metrics for obsolete target: {labels}")
+
+            # Update previous_labels for the next cycle
+            previous_labels = current_labels
 
             # Submit all ping tasks to the thread pool
             futures = [
