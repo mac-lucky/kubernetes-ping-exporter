@@ -28,7 +28,7 @@ METRICS = {
     'ping_up': Gauge('ping_up', 'Target reachability status (1=up, 0=down)', ['source', 'destination', 'source_nodename', 'dest_nodename', 'source_podname'])
 }
 
-def get_pod_ips() -> List<Tuple[str, str, str]:
+def get_pod_ips() -> List<Tuple[str, str, str]]:
     try:
         config.load_incluster_config()
         v1 = client.CoreV1Api()
