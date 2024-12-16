@@ -124,6 +124,7 @@ def main():
     source_ip = os.environ.get('POD_IP')
     source_nodename = os.environ.get('NODE_NAME', 'unknown')
     source_podname = os.environ.get('MY_POD_NAME', 'unknown')
+    namespace = os.environ.get('MY_POD_NAMESPACE')  # Add this line
     print(f"Source IP: {source_ip}, Node: {source_nodename}, Pod: {source_podname}")
 
     # Cache target IPs
