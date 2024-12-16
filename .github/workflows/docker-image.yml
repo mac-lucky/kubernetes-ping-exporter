@@ -29,8 +29,31 @@ jobs:
     - name: Set date environment variable
       run: echo "DATE=$(date +%Y%m%d%H%M%S)" >> $GITHUB_ENV
 
+    - name: Read version from file
+      id: read_version
+      run: |
+        VERSION=$(cat version.txt)
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+    - name: Update version
+      id: update_version
+      run: |
+        VERSION=$(cat version.txt)
+        NEW_VERSION=$(echo $VERSION | awk -F. -v OFS=. '{$NF++;print}')
+        echo $NEW_VERSION > version.txt
+        echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+
     - name: Build and push
       uses: docker/build-push-action@v6
       with:
         push: true
-        tags: maclucky/kubernetes-ping-exporter:${{ env.DATE }}
+        tags: maclucky/kubernetes-ping-exporter:${{ env.NEW_VERSION }}
+
+
+    - name: Commit version update
+      run: |
+        git config --global user.name 'github-actions'
+        git config --global user.email 'github-actions@github.com'
+        git add version.txt
+        git commit -m "Update version to ${{ env.NEW_VERSION }}"
+        git push
