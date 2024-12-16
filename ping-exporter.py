@@ -127,32 +127,19 @@ def main():
     namespace = os.environ.get('MY_POD_NAMESPACE')  # Add this line
     print(f"Source IP: {source_ip}, Node: {source_nodename}, Pod: {source_podname}")
 
-    # Cache target IPs
-    target_info_cache = []
-    cache_refresh_interval = 60  # Refresh every 60 seconds
-    last_cache_time = 0
-
     # Limit the number of worker threads
     max_workers = min(16, os.cpu_count() * 2)
 
-    # Initialize cycle counter
-    cycle_count = 0
-
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         while not shutdown_event.is_set():
-            current_time = time.time()
-            # Do not cache for the first 3 cycles
-            if cycle_count < 3 or current_time - last_cache_time > cache_refresh_interval:
-                # Refresh targets
-                pod_targets = get_pod_ips(v1_api, namespace, source_ip)
-                additional_targets = [
-                    (ip, 'external', 'external') for ip in get_additional_ips(v1_api, namespace)
-                ]
-                target_info_cache = pod_targets + additional_targets
-                last_cache_time = current_time
-            cycle_count += 1
+            # Always refresh targets
+            pod_targets = get_pod_ips(v1_api, namespace, source_ip)
+            additional_targets = [
+                (ip, 'external', 'external') for ip in get_additional_ips(v1_api, namespace)
+            ]
+            target_info = pod_targets + additional_targets
             print("\n--- Starting new ping cycle ---")
-            print(f"Total targets to ping: {len(target_info_cache)}")
+            print(f"Total targets to ping: {len(target_info)}")
 
             # Submit all ping tasks to the thread pool
             futures = [
@@ -162,7 +149,7 @@ def main():
                     target,
                     source_nodename,
                     source_podname
-                ) for target in target_info_cache
+                ) for target in target_info
             ]
 
             # Wait for all pings to complete
