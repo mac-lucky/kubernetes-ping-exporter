@@ -19,7 +19,7 @@ spec:
       serviceAccountName: ping-exporter
       containers:
       - name: ping-exporter
-        image: maclucky/kubernetes-ping-exporter
+        image: ghcr.io/mac-lucky/kubernetes-ping-exporter
         imagePullPolicy: Always
         env:
         - name: POD_IP
