@@ -1,21 +1,25 @@
-# Use the official Python image from the Docker Hub
-FROM python:3.12-alpine
+# Build stage
+FROM python:3.12-slim as builder
 
-# Set the working directory inside the container
 WORKDIR /app
-
-# Copy the requirements file into the container
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip3 install --upgrade pip && pip3 install -r requirements.txt && apk add --no-cache fping
+RUN pip install --no-cache-dir --user -r requirements.txt
 
-# Copy the rest of the application code
+# Final stage
+FROM python:3.12-slim
+
+WORKDIR /app
+COPY --from=builder /root/.local /root/.local
 COPY ping-exporter.py .
 
-# Expose the port the app runs on
+# Install fping and clean up
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fping \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PATH=/root/.local/bin:$PATH
 EXPOSE 9107
 
-# Run the application
-
-CMD ["python","-u", "ping-exporter.py"]
+CMD ["python", "-u", "ping-exporter.py"]
