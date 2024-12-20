@@ -3,8 +3,12 @@ name: Docker Image for Kubernetes Ping Exporter
 on:
   push:
     branches: [ "master" ]
+    paths-ignore:
+      - '.github/workflows/**'
   pull_request:
     branches: [ "master" ]
+    paths-ignore:
+      - '.github/workflows/**'
 
 jobs:
 
@@ -46,18 +50,21 @@ jobs:
           maclucky/kubernetes-ping-exporter
           ghcr.io/mac-lucky/kubernetes-ping-exporter
 
-    - name: Read version from file
-      id: read_version
+    - name: Get latest version tag from Docker Hub
+      id: get_latest_version
       run: |
-        VERSION=$(cat version.txt)
-        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        LATEST_TAG=$(curl -s "https://registry.hub.docker.com/v2/repositories/maclucky/kubernetes-ping-exporter/tags?page_size=100" | jq -r '.results[].name' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+        echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
 
-    - name: Update version
-      id: update_version
+    - name: Increment version
+      id: increment_version
       run: |
-        VERSION=$(cat version.txt)
-        NEW_VERSION=$(echo $VERSION | awk -F. -v OFS=. '{$NF++;print}')
-        echo $NEW_VERSION > version.txt
+        VERSION=${{ env.LATEST_TAG }}
+        if [ -z "$VERSION" ]; then
+          NEW_VERSION="1.0.0"
+        else
+          NEW_VERSION=$(echo $VERSION | awk -F. -v OFS=. '{$NF++;print}')
+        fi
         echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
 
     - name: Build and push to Docker Hub
@@ -72,11 +79,3 @@ jobs:
           ghcr.io/mac-lucky/kubernetes-ping-exporter:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max
-
-    - name: Commit version update
-      run: |
-        git config --global user.name 'github-actions'
-        git config --global user.email 'github-actions@github.com'
-        git add version.txt
-        git commit -m "Update version to ${{ env.NEW_VERSION }}"
-        git push
