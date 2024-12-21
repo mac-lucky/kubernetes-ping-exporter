@@ -2,11 +2,11 @@ name: Docker Image for Kubernetes Ping Exporter
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "golang" ]
     paths-ignore:
       - '.github/workflows/**'
   pull_request:
-    branches: [ "master" ]
+    branches: [ "golang" ]
     paths-ignore:
       - '.github/workflows/**'
 
@@ -47,13 +47,13 @@ jobs:
       uses: docker/metadata-action@v5
       with:
         images: |
-          maclucky/kubernetes-ping-exporter
-          ghcr.io/mac-lucky/kubernetes-ping-exporter
+          maclucky/kubernetes-ping-exporter-golang
+          ghcr.io/mac-lucky/kubernetes-ping-exporter-golang
 
     - name: Get latest version tag from Docker Hub
       id: get_latest_version
       run: |
-        LATEST_TAG=$(curl -s "https://registry.hub.docker.com/v2/repositories/maclucky/kubernetes-ping-exporter/tags?page_size=100" | jq -r '.results[].name' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+        LATEST_TAG=$(curl -s "https://registry.hub.docker.com/v2/repositories/maclucky/kubernetes-ping-exporter-golang/tags?page_size=100" | jq -r '.results[].name' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
         echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
 
     - name: Increment version
@@ -73,9 +73,9 @@ jobs:
         platforms: linux/amd64,linux/arm64
         push: true
         tags: |
-          maclucky/kubernetes-ping-exporter:${{ env.NEW_VERSION }}
-          maclucky/kubernetes-ping-exporter:latest
-          ghcr.io/mac-lucky/kubernetes-ping-exporter:${{ env.NEW_VERSION }}
-          ghcr.io/mac-lucky/kubernetes-ping-exporter:latest
+          maclucky/kubernetes-ping-exporter-golang:${{ env.NEW_VERSION }}
+          maclucky/kubernetes-ping-exporter-golang:latest
+          ghcr.io/mac-lucky/kubernetes-ping-exporter-golang:${{ env.NEW_VERSION }}
+          ghcr.io/mac-lucky/kubernetes-ping-exporter-golang:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max

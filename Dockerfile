@@ -1,25 +1,37 @@
-# Build stage
-FROM python:3.12-slim as builder
+FROM golang:alpine AS builder
 
 WORKDIR /app
-COPY requirements.txt .
 
-RUN pip install --no-cache-dir --user -r requirements.txt
+# Install build dependencies
+RUN apk add --no-cache git
+
+# Copy go mod files
+COPY go.* ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -o kubernetes_ping_exporter
 
 # Final stage
-FROM python:3.12-slim
+FROM alpine
 
 WORKDIR /app
-COPY --from=builder /root/.local /root/.local
-COPY ping-exporter.py .
 
-# Install fping and clean up
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends fping \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# Copy the binary from builder
+COPY --from=builder /app/kubernetes_ping_exporter .
 
-ENV PATH=/root/.local/bin:$PATH
-EXPOSE 9107
+# Create a directory for the mounted config
+RUN mkdir /config
 
-CMD ["python", "-u", "ping-exporter.py"]
+# Set default metrics port and check interval
+ENV METRICS_PORT=2112
+ENV CHECK_INTERVAL_SECONDS=30
+
+# Expose prometheus metrics port
+EXPOSE ${METRICS_PORT}
+
+# Run the application with correct config path
+CMD ["/app/kubernetes_ping_exporter"]
