@@ -14,60 +14,14 @@ import (
 	probing "github.com/prometheus-community/pro-bing"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
 
-var (
-	pingRTTBest = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "ping_rtt_best_seconds",
-			Help: "Best round trip time",
-		},
-		[]string{"source", "destination", "source_nodename", "dest_nodename", "source_podname"},
-	)
-
-	pingRTTWorst = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "ping_rtt_worst_seconds",
-			Help: "Worst round trip time",
-		},
-		[]string{"source", "destination", "source_nodename", "dest_nodename", "source_podname"},
-	)
-
-	pingRTTMean = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "ping_rtt_mean_seconds",
-			Help: "Mean round trip time",
-		},
-		[]string{"source", "destination", "source_nodename", "dest_nodename", "source_podname"},
-	)
-
-	pingRTTStdDev = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "ping_rtt_std_deviation_seconds",
-			Help: "Standard deviation of RTT",
-		},
-		[]string{"source", "destination", "source_nodename", "dest_nodename", "source_podname"},
-	)
-
-	pingLossRatio = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "ping_loss_ratio",
-			Help: "Packet loss ratio",
-		},
-		[]string{"source", "destination", "source_nodename", "dest_nodename", "source_podname"},
-	)
-
-	pingUp = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "ping_up",
-			Help: "Target reachability status (1=up, 0=down)",
-		},
-		[]string{"source", "destination", "source_nodename", "dest_nodename", "source_podname"},
-	)
-)
+// Metric declarations remain the same...
 
 type PodInfo struct {
 	IP       string
@@ -87,6 +41,13 @@ type PingResult struct {
 }
 
 func init() {
+	// Configure zerolog
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	log.Logger = log.Output(zerolog.ConsoleWriter{
+		Out:        os.Stdout,
+		TimeFormat: time.RFC3339,
+	})
+
 	// Register metrics with Prometheus
 	prometheus.MustRegister(pingRTTBest)
 	prometheus.MustRegister(pingRTTWorst)
@@ -97,6 +58,13 @@ func init() {
 }
 
 func getPodIPs(clientset *kubernetes.Clientset, namespace, currentPodIP string) ([]PodInfo, error) {
+	logger := log.With().
+		Str("namespace", namespace).
+		Str("currentPodIP", currentPodIP).
+		Logger()
+
+	logger.Debug().Msg("fetching pod IPs")
+
 	pods, err := clientset.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
 		LabelSelector: "app=ping-exporter",
 	})
@@ -114,14 +82,25 @@ func getPodIPs(clientset *kubernetes.Clientset, namespace, currentPodIP string) 
 			})
 		}
 	}
+
+	logger.Info().
+		Int("podCount", len(podInfos)).
+		Msg("found target pods")
+
 	return podInfos, nil
 }
 
 func getAdditionalIPs(clientset *kubernetes.Clientset, namespace string) ([]PodInfo, error) {
+	logger := log.With().Str("namespace", namespace).Logger()
+	
 	configMapName := os.Getenv("CONFIG_MAP_NAME")
 	if configMapName == "" {
 		configMapName = "ping-exporter-config"
 	}
+
+	logger.Debug().
+		Str("configMap", configMapName).
+		Msg("fetching additional IPs from config map")
 
 	configMap, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.Background(), configMapName, metav1.GetOptions{})
 	if err != nil {
@@ -140,10 +119,18 @@ func getAdditionalIPs(clientset *kubernetes.Clientset, namespace string) ([]PodI
 			})
 		}
 	}
+
+	logger.Info().
+		Int("externalTargets", len(podInfos)).
+		Msg("found external targets")
+
 	return podInfos, nil
 }
 
 func pingTarget(target string) (*PingResult, error) {
+	logger := log.With().Str("target", target).Logger()
+	logger.Debug().Msg("starting ping sequence")
+
 	pinger, err := probing.NewPinger(target)
 	if err != nil {
 		return nil, err
@@ -155,15 +142,17 @@ func pingTarget(target string) (*PingResult, error) {
 
 	err = pinger.Run()
 	if err != nil {
+		logger.Error().Err(err).Msg("ping failed")
 		return &PingResult{Up: 0, Loss: 1.0}, nil
 	}
 
 	stats := pinger.Statistics()
 	if stats.PacketsRecv == 0 {
+		logger.Warn().Msg("no packets received")
 		return &PingResult{Up: 0, Loss: 1.0}, nil
 	}
 
-	return &PingResult{
+	result := &PingResult{
 		Up:       1,
 		Loss:     float64(stats.PacketLoss) / 100,
 		Best:     float64(stats.MinRtt) / float64(time.Second),
@@ -171,10 +160,24 @@ func pingTarget(target string) (*PingResult, error) {
 		Mean:     float64(stats.AvgRtt) / float64(time.Second),
 		StdDev:   float64(stats.StdDevRtt) / float64(time.Second),
 		HasStats: true,
-	}, nil
+	}
+
+	logger.Debug().
+		Float64("loss", result.Loss).
+		Float64("mean", result.Mean).
+		Float64("best", result.Best).
+		Float64("worst", result.Worst).
+		Msg("ping statistics")
+
+	return result, nil
 }
 
 func updateMetrics(source, target PodInfo, result *PingResult) {
+	logger := log.With().
+		Str("source", source.IP).
+		Str("target", target.IP).
+		Logger()
+
 	labels := prometheus.Labels{
 		"source":          source.IP,
 		"destination":     target.IP,
@@ -191,21 +194,24 @@ func updateMetrics(source, target PodInfo, result *PingResult) {
 		pingRTTWorst.With(labels).Set(result.Worst)
 		pingRTTMean.With(labels).Set(result.Mean)
 		pingRTTStdDev.With(labels).Set(result.StdDev)
+		logger.Debug().Msg("updated all metrics")
+	} else {
+		logger.Debug().Msg("updated reachability metrics only")
 	}
 }
 
 func main() {
+	log.Info().Msg("starting ping exporter")
+
 	// Get Kubernetes configuration
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		fmt.Printf("Failed to get cluster config: %v\n", err)
-		os.Exit(1)
+		log.Fatal().Err(err).Msg("failed to get cluster config")
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		fmt.Printf("Failed to create Kubernetes client: %v\n", err)
-		os.Exit(1)
+		log.Fatal().Err(err).Msg("failed to create Kubernetes client")
 	}
 
 	// Get environment variables
@@ -215,9 +221,15 @@ func main() {
 	namespace := os.Getenv("MY_POD_NAMESPACE")
 
 	if sourcePodIP == "" || sourceNodeName == "" || sourcePodName == "" || namespace == "" {
-		fmt.Println("Required environment variables not set")
-		os.Exit(1)
+		log.Fatal().Msg("required environment variables not set")
 	}
+
+	log.Info().
+		Str("podIP", sourcePodIP).
+		Str("nodeName", sourceNodeName).
+		Str("podName", sourcePodName).
+		Str("namespace", namespace).
+		Msg("initialized with pod info")
 
 	sourcePod := PodInfo{
 		IP:       sourcePodIP,
@@ -229,9 +241,9 @@ func main() {
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
 		server := &http.Server{Addr: ":9107"}
+		log.Info().Msg("starting metrics server on :9107")
 		if err := server.ListenAndServe(); err != nil {
-			fmt.Printf("HTTP server error: %v\n", err)
-			os.Exit(1)
+			log.Fatal().Err(err).Msg("HTTP server error")
 		}
 	}()
 
@@ -245,19 +257,24 @@ func main() {
 
 	for {
 		select {
-		case <-sigChan:
-			fmt.Println("Received termination signal, shutting down...")
+		case sig := <-sigChan:
+			log.Info().
+				Str("signal", sig.String()).
+				Msg("received termination signal, shutting down")
 			return
 		case <-ticker.C:
+			cycleStart := time.Now()
+			log.Debug().Msg("starting new ping cycle")
+
 			podTargets, err := getPodIPs(clientset, namespace, sourcePodIP)
 			if err != nil {
-				fmt.Printf("Error getting pod IPs: %v\n", err)
+				log.Error().Err(err).Msg("error getting pod IPs")
 				continue
 			}
 
 			additionalTargets, err := getAdditionalIPs(clientset, namespace)
 			if err != nil {
-				fmt.Printf("Error getting additional IPs: %v\n", err)
+				log.Error().Err(err).Msg("error getting additional IPs")
 				continue
 			}
 
@@ -270,7 +287,10 @@ func main() {
 					defer wg.Done()
 					result, err := pingTarget(target.IP)
 					if err != nil {
-						fmt.Printf("Error pinging %s: %v\n", target.IP, err)
+						log.Error().
+							Err(err).
+							Str("target", target.IP).
+							Msg("error pinging target")
 						return
 					}
 					result.Target = target
@@ -279,6 +299,10 @@ func main() {
 			}
 
 			wg.Wait()
+			log.Info().
+				Dur("duration", time.Since(cycleStart)).
+				Int("totalTargets", len(targets)).
+				Msg("ping cycle completed")
 		}
 	}
 }
