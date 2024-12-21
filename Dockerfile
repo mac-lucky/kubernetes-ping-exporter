@@ -23,9 +23,6 @@ WORKDIR /app
 # Copy the binary from builder
 COPY --from=builder /app/kubernetes_ping_exporter .
 
-# Create a directory for the mounted config
-RUN mkdir /config
-
 # Set default metrics port and check interval
 ENV METRICS_PORT=2112
 ENV CHECK_INTERVAL_SECONDS=30

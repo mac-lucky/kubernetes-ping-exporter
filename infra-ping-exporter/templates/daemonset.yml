@@ -4,6 +4,7 @@ metadata:
   name: ping-exporter
   namespace: monitoring
 spec:
+  imagePullPolicy: Always
   updateStrategy:
     type: RollingUpdate
     rollingUpdate:
@@ -19,7 +20,7 @@ spec:
       serviceAccountName: ping-exporter
       containers:
       - name: ping-exporter
-        image: maclucky/kubernetes-ping-exporter
+        image: maclucky/kubernetes-ping-exporter-golang
         imagePullPolicy: IfNotPresent
         env:
         - name: POD_IP
