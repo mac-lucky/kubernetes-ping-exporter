@@ -71,6 +71,13 @@ var (
 	)
 )
 
+var (
+    targetCache     = make(map[string]PodInfo)
+    targetCacheMux  sync.RWMutex
+    cleanupCounter  = 0
+    cleanupInterval = 4 // Clean up every 4th run
+)
+
 type PodInfo struct {
 	IP       string
 	NodeName string
@@ -248,6 +255,41 @@ func updateMetrics(source, target PodInfo, result *PingResult) {
 	}
 }
 
+func cleanupOldMetrics(currentTargets map[string]PodInfo, source PodInfo) {
+    targetCacheMux.Lock()
+    defer targetCacheMux.Unlock()
+
+    // Find targets that no longer exist
+    for cachedIP, cachedTarget := range targetCache {
+        if _, exists := currentTargets[cachedIP]; !exists {
+            logger := log.With().
+                Str("target", cachedIP).
+                Str("nodeName", cachedTarget.NodeName).
+                Logger()
+            logger.Info().Msg("cleaning up metrics for removed target")
+
+            labels := prometheus.Labels{
+                "source":          source.IP,
+                "destination":     cachedIP,
+                "source_nodename": source.NodeName,
+                "dest_nodename":   cachedTarget.NodeName,
+                "source_podname":  source.PodName,
+            }
+
+            // Delete metrics for removed target
+            pingUp.Delete(labels)
+            pingLossRatio.Delete(labels)
+            pingRTTBest.Delete(labels)
+            pingRTTWorst.Delete(labels)
+            pingRTTMean.Delete(labels)
+            pingRTTStdDev.Delete(labels)
+        }
+    }
+
+    // Update cache with current targets
+    targetCache = currentTargets
+}
+
 func main() {
 	log.Info().Msg("starting ping exporter")
 
@@ -314,6 +356,9 @@ func main() {
 			cycleStart := time.Now()
 			log.Debug().Msg("starting new ping cycle")
 
+			// Increment cleanup counter
+            cleanupCounter++
+
 			podTargets, err := getPodIPs(clientset, namespace, sourcePodIP)
 			if err != nil {
 				log.Error().Err(err).Msg("error getting pod IPs")
@@ -326,8 +371,24 @@ func main() {
 				continue
 			}
 
-			targets := append(podTargets, additionalTargets...)
+			// Create current targets map
+            currentTargets := make(map[string]PodInfo)
+            for _, target := range podTargets {
+                currentTargets[target.IP] = target
+            }
+            for _, target := range additionalTargets {
+                currentTargets[target.IP] = target
+            }
+
+            // Perform cleanup every 4th run
+            if cleanupCounter >= cleanupInterval {
+                log.Info().Msg("performing metrics cleanup")
+                cleanupOldMetrics(currentTargets, sourcePod)
+                cleanupCounter = 0
+            }
+
 			var wg sync.WaitGroup
+			targets := append(podTargets, additionalTargets...)
 
 			for _, target := range targets {
 				wg.Add(1)

@@ -1,49 +1,78 @@
 # Kubernetes Ping Exporter
 
-A Prometheus exporter for ICMP ping metrics in Kubernetes environments. This exporter allows you to monitor network latency to specified IP addresses from within your Kubernetes cluster.
+A Prometheus exporter that measures network latency between Kubernetes pods and external targets.
 
 ## Features
 
-- Exports ICMP ping metrics in Prometheus format
-- Runs as a Kubernetes deployment
-- Configurable target IPs via ConfigMap
-- Integrated with Prometheus Operator via ServiceMonitor
-- RBAC-ready with necessary permissions
+- Measures network latency between pods with `app=ping-exporter` label
+- Supports additional external IP targets via ConfigMap
+- Provides comprehensive ping metrics including RTT, packet loss, and reachability
+- Auto-discovery of ping-exporter pods within the same namespace
 
-## Prerequisites
+## Metrics
 
-- Kubernetes cluster
-- Helm v3
-- Prometheus Operator installed in the cluster
+- `ping_rtt_best_seconds`: Best round trip time
+- `ping_rtt_worst_seconds`: Worst round trip time
+- `ping_rtt_mean_seconds`: Mean round trip time
+- `ping_rtt_std_deviation_seconds`: Standard deviation of RTT
+- `ping_loss_ratio`: Packet loss ratio (0-1)
+- `ping_up`: Target reachability status (1=up, 0=down)
+
+## Requirements
+
+- Kubernetes cluster with RBAC enabled
+- Helm 3.x (for installation)
 
 ## Installation
 
+Using Helm:
 ```bash
 helm install ping-exporter ./infra-ping-exporter -n monitoring
 ```
 
 ## Configuration
 
-The exporter is configured via a ConfigMap. By default, it pings the following IP addresses:
-- 1.1.1.1 (Cloudflare DNS)
-- 8.8.8.8 (Google DNS)
+### Environment Variables
 
-To modify target IPs, update the `additional_ips` field in the ConfigMap.
+- `POD_IP`: IP address of the current pod (required)
+- `NODE_NAME`: Name of the node running the pod (required)
+- `MY_POD_NAME`: Name of the current pod (required)
+- `MY_POD_NAMESPACE`: Namespace where the pod is running (required)
+- `CONFIG_MAP_NAME`: Name of the ConfigMap containing additional IPs (default: ping-exporter-config)
 
-## Components
+### ConfigMap
 
-- **Service**: Headless service exposing port 9107
-- **ServiceMonitor**: Prometheus Operator integration
-- **RBAC**: ServiceAccount, Role, and RoleBinding for necessary permissions
-- **ConfigMap**: Configuration for target IP addresses
+Create a ConfigMap to specify additional IP targets:
 
-## Metrics
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ping-exporter-config
+data:
+  additional_ips: "8.8.8.8,1.1.1.1"
+```
 
-The exporter provides metrics on port 9107 and is automatically discovered by Prometheus through the ServiceMonitor configuration.
+## Metrics Collection
 
-## Docker Image
+The exporter runs on port 9107 and metrics are available at `/metrics`. Ping measurements are performed every 15 seconds.
 
-The exporter uses a multi-stage build process with Python 3.12 and includes:
-- Python dependencies
-- fping utility
-- Exposed port 9107
+## Labels
+
+All metrics include the following labels:
+- `source`: Source pod IP
+- `destination`: Target IP
+- `source_nodename`: Source node name
+- `dest_nodename`: Target node name
+- `source_podname`: Source pod name
+
+## Building
+
+To build the Docker image:
+```bash
+docker build -t kubernetes-ping-exporter .
+```
+
+## License
+
+MIT License
