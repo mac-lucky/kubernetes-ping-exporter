@@ -1,4 +1,8 @@
-FROM golang:alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:alpine AS builder
+
+# Add platform arguments
+ARG TARGETARCH
+ARG BUILDPLATFORM
 
 WORKDIR /app
 
@@ -12,11 +16,11 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -o kubernetes_ping_exporter
+# Build the application with architecture-specific flags
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o kubernetes_ping_exporter
 
 # Final stage
-FROM alpine
+FROM --platform=$TARGETPLATFORM alpine
 
 WORKDIR /app
 
