@@ -21,7 +21,55 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// Metric declarations remain the same...
+var (
+	pingRTTBest = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "ping_rtt_best_seconds",
+			Help: "Best round trip time",
+		},
+		[]string{"source", "destination", "source_nodename", "dest_nodename", "source_podname"},
+	)
+
+	pingRTTWorst = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "ping_rtt_worst_seconds",
+			Help: "Worst round trip time",
+		},
+		[]string{"source", "destination", "source_nodename", "dest_nodename", "source_podname"},
+	)
+
+	pingRTTMean = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "ping_rtt_mean_seconds",
+			Help: "Mean round trip time",
+		},
+		[]string{"source", "destination", "source_nodename", "dest_nodename", "source_podname"},
+	)
+
+	pingRTTStdDev = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "ping_rtt_std_deviation_seconds",
+			Help: "Standard deviation of RTT",
+		},
+		[]string{"source", "destination", "source_nodename", "dest_nodename", "source_podname"},
+	)
+
+	pingLossRatio = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "ping_loss_ratio",
+			Help: "Packet loss ratio",
+		},
+		[]string{"source", "destination", "source_nodename", "dest_nodename", "source_podname"},
+	)
+
+	pingUp = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "ping_up",
+			Help: "Target reachability status (1=up, 0=down)",
+		},
+		[]string{"source", "destination", "source_nodename", "dest_nodename", "source_podname"},
+	)
+)
 
 type PodInfo struct {
 	IP       string
