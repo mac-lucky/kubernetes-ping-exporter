@@ -29,14 +29,10 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 \
     GOOS=linux \
     GOARCH=$TARGETARCH \
-    go build -ldflags="-s -w" \
-    -o /app/kubernetes_ping_exporter
+    go build -o /app/kubernetes_ping_exporter
 
 # Final stage
 FROM --platform=$TARGETPLATFORM alpine
-
-# Add necessary runtime dependencies
-RUN apk add --no-cache ca-certificates iputils
 
 # Create non-root user
 RUN adduser -D -H -h /app appuser
