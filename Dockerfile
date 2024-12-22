@@ -1,38 +1,64 @@
+# Syntax version for better caching and features
+# syntax=docker/dockerfile:1.4
+
+# Build stage
 FROM --platform=$BUILDPLATFORM golang:alpine AS builder
 
 # Add platform arguments
 ARG TARGETARCH
 ARG BUILDPLATFORM
 
-WORKDIR /app
-
 # Install build dependencies
-RUN apk add --no-cache git
+RUN apk add --no-cache ca-certificates git
 
-# Copy go mod files
+# Set working directory
+WORKDIR /src
+
+# Copy only go.mod and go.sum first for better layer caching
 COPY go.* ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
 
 # Copy source code
 COPY . .
 
-# Build the application with architecture-specific flags
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o kubernetes_ping_exporter
+# Build the application with optimizations
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 \
+    GOOS=linux \
+    GOARCH=$TARGETARCH \
+    go build -ldflags="-s -w" \
+    -o /app/kubernetes_ping_exporter
 
 # Final stage
 FROM --platform=$TARGETPLATFORM alpine
 
+# Add necessary runtime dependencies
+RUN apk add --no-cache ca-certificates iputils
+
+# Create non-root user
+RUN adduser -D -H -h /app appuser
+
 WORKDIR /app
 
-# Copy the binary from builder
-COPY --from=builder /app/kubernetes_ping_exporter .
+# Copy binary from builder
+COPY --from=builder --chown=appuser:appuser /app/kubernetes_ping_exporter .
 
-# Set default metrics port and check interval
-ENV METRICS_PORT=2112
-ENV CHECK_INTERVAL_SECONDS=30
+# Set environment variables
+ENV METRICS_PORT=9107 \
+    CHECK_INTERVAL_SECONDS=15
+
+# Switch to non-root user
+USER appuser
 
 # Expose prometheus metrics port
 EXPOSE ${METRICS_PORT}
 
-# Run the application with correct config path
-CMD ["/app/kubernetes_ping_exporter"]
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -q --spider http://localhost:${METRICS_PORT}/metrics || exit 1
+
+# Run the application
+ENTRYPOINT ["/app/kubernetes_ping_exporter"]

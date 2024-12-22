@@ -69,13 +69,16 @@ var (
 		},
 		[]string{"source", "destination", "source_nodename", "dest_nodename", "source_podname"},
 	)
-)
 
-var (
-    targetCache     = make(map[string]PodInfo)
-    targetCacheMux  sync.RWMutex
-    cleanupCounter  = 0
-    cleanupInterval = 4 // Clean up every 4th run
+	// Metric collectors for easy access
+	metricCollectors = []prometheus.Collector{
+		pingRTTBest,
+		pingRTTWorst,
+		pingRTTMean,
+		pingRTTStdDev,
+		pingLossRatio,
+		pingUp,
+	}
 )
 
 type PodInfo struct {
@@ -95,6 +98,70 @@ type PingResult struct {
 	HasStats bool
 }
 
+// MetricsState maintains the current state of metrics
+type MetricsState struct {
+	activeTargets map[string]PodInfo
+	mutex         sync.RWMutex
+}
+
+func NewMetricsState() *MetricsState {
+	return &MetricsState{
+		activeTargets: make(map[string]PodInfo),
+	}
+}
+
+func (ms *MetricsState) updateActiveTargets(targets []PodInfo) {
+	ms.mutex.Lock()
+	defer ms.mutex.Unlock()
+
+	// Create new map for current targets
+	newTargets := make(map[string]PodInfo)
+	for _, target := range targets {
+		newTargets[target.IP] = target
+	}
+
+	// Replace the active targets with new ones
+	ms.activeTargets = newTargets
+}
+
+func (ms *MetricsState) cleanupMetrics(source PodInfo) {
+	ms.mutex.RLock()
+	defer ms.mutex.RUnlock()
+
+	logger := log.With().
+		Str("source", source.IP).
+		Int("activeTargets", len(ms.activeTargets)).
+		Logger()
+
+	// Delete all existing metrics
+	for _, collector := range metricCollectors {
+		if vec, ok := collector.(*prometheus.GaugeVec); ok {
+			vec.Reset()
+		}
+	}
+
+	// Reinitialize metrics only for active targets
+	for _, target := range ms.activeTargets {
+		labels := prometheus.Labels{
+			"source":          source.IP,
+			"destination":     target.IP,
+			"source_nodename": source.NodeName,
+			"dest_nodename":   target.NodeName,
+			"source_podname":  source.PodName,
+		}
+
+		// Initialize with default values
+		pingUp.With(labels).Set(0)
+		pingLossRatio.With(labels).Set(1.0)
+		pingRTTBest.With(labels).Set(0)
+		pingRTTWorst.With(labels).Set(0)
+		pingRTTMean.With(labels).Set(0)
+		pingRTTStdDev.With(labels).Set(0)
+	}
+
+	logger.Info().Msg("metrics cleaned up and reinitialized")
+}
+
 func init() {
 	// Configure zerolog
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
@@ -104,12 +171,9 @@ func init() {
 	})
 
 	// Register metrics with Prometheus
-	prometheus.MustRegister(pingRTTBest)
-	prometheus.MustRegister(pingRTTWorst)
-	prometheus.MustRegister(pingRTTMean)
-	prometheus.MustRegister(pingRTTStdDev)
-	prometheus.MustRegister(pingLossRatio)
-	prometheus.MustRegister(pingUp)
+	for _, collector := range metricCollectors {
+		prometheus.MustRegister(collector)
+	}
 }
 
 func getPodIPs(clientset *kubernetes.Clientset, namespace, currentPodIP string) ([]PodInfo, error) {
@@ -255,45 +319,6 @@ func updateMetrics(source, target PodInfo, result *PingResult) {
 	}
 }
 
-func cleanupOldMetrics(currentTargets map[string]PodInfo, source PodInfo) {
-    targetCacheMux.Lock()
-    defer targetCacheMux.Unlock()
-
-    // First, reset all metric vectors to ensure clean state
-    pingUp.Reset()
-    pingLossRatio.Reset()
-    pingRTTBest.Reset()
-    pingRTTWorst.Reset()
-    pingRTTMean.Reset()
-    pingRTTStdDev.Reset()
-
-    // Re-populate metrics for current targets
-    for _, target := range currentTargets {
-        labels := prometheus.Labels{
-            "source":          source.IP,
-            "destination":     target.IP,
-            "source_nodename": source.NodeName,
-            "dest_nodename":   target.NodeName,
-            "source_podname":  source.PodName,
-        }
-        
-        // Initialize metrics with default values
-        pingUp.With(labels).Set(0)
-        pingLossRatio.With(labels).Set(1.0)
-        pingRTTBest.With(labels).Set(0)
-        pingRTTWorst.With(labels).Set(0)
-        pingRTTMean.With(labels).Set(0)
-        pingRTTStdDev.With(labels).Set(0)
-    }
-
-    // Update cache with current targets
-    targetCache = currentTargets
-
-    log.Info().
-        Int("activeTargets", len(currentTargets)).
-        Msg("metrics reset and reinitialized for current targets")
-}
-
 func main() {
 	log.Info().Msg("starting ping exporter")
 
@@ -331,6 +356,9 @@ func main() {
 		PodName:  sourcePodName,
 	}
 
+	// Initialize metrics state
+	metricsState := NewMetricsState()
+
 	// Start Prometheus HTTP server
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
@@ -360,9 +388,6 @@ func main() {
 			cycleStart := time.Now()
 			log.Debug().Msg("starting new ping cycle")
 
-			// Increment cleanup counter
-            cleanupCounter++
-
 			podTargets, err := getPodIPs(clientset, namespace, sourcePodIP)
 			if err != nil {
 				log.Error().Err(err).Msg("error getting pod IPs")
@@ -375,26 +400,15 @@ func main() {
 				continue
 			}
 
-			// Create current targets map
-            currentTargets := make(map[string]PodInfo)
-            for _, target := range podTargets {
-                currentTargets[target.IP] = target
-            }
-            for _, target := range additionalTargets {
-                currentTargets[target.IP] = target
-            }
+			// Combine all targets
+			allTargets := append(podTargets, additionalTargets...)
 
-            // Perform cleanup every 4th run
-            if cleanupCounter >= cleanupInterval {
-                log.Info().Msg("performing metrics cleanup")
-                cleanupOldMetrics(currentTargets, sourcePod)
-                cleanupCounter = 0
-            }
+			// Update active targets and clean up metrics
+			metricsState.updateActiveTargets(allTargets)
+			metricsState.cleanupMetrics(sourcePod)
 
 			var wg sync.WaitGroup
-			targets := append(podTargets, additionalTargets...)
-
-			for _, target := range targets {
+			for _, target := range allTargets {
 				wg.Add(1)
 				go func(target PodInfo) {
 					defer wg.Done()
@@ -414,7 +428,7 @@ func main() {
 			wg.Wait()
 			log.Info().
 				Dur("duration", time.Since(cycleStart)).
-				Int("totalTargets", len(targets)).
+				Int("totalTargets", len(allTargets)).
 				Msg("ping cycle completed")
 		}
 	}
