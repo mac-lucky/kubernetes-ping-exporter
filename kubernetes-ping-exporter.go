@@ -259,35 +259,39 @@ func cleanupOldMetrics(currentTargets map[string]PodInfo, source PodInfo) {
     targetCacheMux.Lock()
     defer targetCacheMux.Unlock()
 
-    // Find targets that no longer exist
-    for cachedIP, cachedTarget := range targetCache {
-        if _, exists := currentTargets[cachedIP]; !exists {
-            logger := log.With().
-                Str("target", cachedIP).
-                Str("nodeName", cachedTarget.NodeName).
-                Logger()
-            logger.Info().Msg("cleaning up metrics for removed target")
+    // First, reset all metric vectors to ensure clean state
+    pingUp.Reset()
+    pingLossRatio.Reset()
+    pingRTTBest.Reset()
+    pingRTTWorst.Reset()
+    pingRTTMean.Reset()
+    pingRTTStdDev.Reset()
 
-            labels := prometheus.Labels{
-                "source":          source.IP,
-                "destination":     cachedIP,
-                "source_nodename": source.NodeName,
-                "dest_nodename":   cachedTarget.NodeName,
-                "source_podname":  source.PodName,
-            }
-
-            // Delete metrics for removed target
-            pingUp.Delete(labels)
-            pingLossRatio.Delete(labels)
-            pingRTTBest.Delete(labels)
-            pingRTTWorst.Delete(labels)
-            pingRTTMean.Delete(labels)
-            pingRTTStdDev.Delete(labels)
+    // Re-populate metrics for current targets
+    for _, target := range currentTargets {
+        labels := prometheus.Labels{
+            "source":          source.IP,
+            "destination":     target.IP,
+            "source_nodename": source.NodeName,
+            "dest_nodename":   target.NodeName,
+            "source_podname":  source.PodName,
         }
+        
+        // Initialize metrics with default values
+        pingUp.With(labels).Set(0)
+        pingLossRatio.With(labels).Set(1.0)
+        pingRTTBest.With(labels).Set(0)
+        pingRTTWorst.With(labels).Set(0)
+        pingRTTMean.With(labels).Set(0)
+        pingRTTStdDev.With(labels).Set(0)
     }
 
     // Update cache with current targets
     targetCache = currentTargets
+
+    log.Info().
+        Int("activeTargets", len(currentTargets)).
+        Msg("metrics reset and reinitialized for current targets")
 }
 
 func main() {
