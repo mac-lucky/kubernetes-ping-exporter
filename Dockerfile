@@ -34,20 +34,14 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Final stage
 FROM --platform=$TARGETPLATFORM alpine
 
-# Create non-root user
-RUN adduser -D -H -h /app appuser
-
 WORKDIR /app
 
-# Copy binary from builder
-COPY --from=builder --chown=appuser:appuser /app/kubernetes_ping_exporter .
+# Copy binary from builder (without user ownership)
+COPY --from=builder /app/kubernetes_ping_exporter .
 
 # Set environment variables
 ENV METRICS_PORT=9107 \
     CHECK_INTERVAL_SECONDS=15
-
-# Switch to non-root user
-USER appuser
 
 # Expose prometheus metrics port
 EXPOSE ${METRICS_PORT}
