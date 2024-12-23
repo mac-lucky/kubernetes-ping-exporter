@@ -164,15 +164,22 @@ func (pe *PingExporter) cleanupOldMetrics() {
     for target, lastSeen := range pe.lastSeen {
         if now.Sub(lastSeen) > staleThreshold {
             log.Printf("Found stale target %s (last seen: %v)", target, lastSeen)
-            // Delete metrics for stale target
+            
+            // Get the correct node name for the target
+            nodeName := pe.nodeNames[target]
+            if nodeName == "" {
+                nodeName = "unknown"
+            }
+            
             labels := prometheus.Labels{
                 "source":          pe.podIP,
                 "destination":     target,
                 "source_nodename": pe.nodeName,
-                "dest_nodename":   "unknown",
+                "dest_nodename":   nodeName,  // Use the correct node name
                 "source_podname":  pe.podName,
             }
 
+            // Delete metrics with correct labels
             rttBest.Delete(labels)
             rttWorst.Delete(labels)
             rttMean.Delete(labels)
@@ -180,11 +187,12 @@ func (pe *PingExporter) cleanupOldMetrics() {
             lossRatio.Delete(labels)
             targetUp.Delete(labels)
 
-            // Remove target from tracking
+            // Remove target from all tracking maps
             delete(pe.targets, target)
             delete(pe.lastSeen, target)
+            delete(pe.nodeNames, target)  // Also clean up the node name mapping
 
-            log.Printf("Cleaned up metrics for stale target: %s", target)
+            log.Printf("Cleaned up metrics for stale target: %s (node: %s)", target, nodeName)
             staleCount++
         }
     }
