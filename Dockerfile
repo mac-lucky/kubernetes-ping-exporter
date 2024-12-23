@@ -17,10 +17,7 @@ RUN go mod download
 COPY kubernetes_ping_exporter .
 
 # Make the build process more explicit for multi-arch
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH \
-    go build \
-    -ldflags="-w -s" \
-    -o /app/kubernetes_ping_exporter
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -ldflags="-w -s" -o /app/kubernetes_ping_exporter
 
 # Final stage - will use the target platform
 FROM --platform=$TARGETPLATFORM alpine
