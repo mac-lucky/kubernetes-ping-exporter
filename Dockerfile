@@ -1,11 +1,10 @@
-# syntax=docker/dockerfile:1.4
-
-# Platform arguments with default values
-ARG TARGETARCH
-ARG TARGETPLATFORM
-
 # Build stage - will automatically use the correct platform
-FROM --platform=$BUILDPLATFORM golang:alpine AS builder
+FROM --platform=${BUILDPLATFORM:-linux/amd64} golang:alpine AS builder
+
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /src
 
@@ -17,10 +16,10 @@ RUN go mod download
 COPY . .
 
 # Make the build process more explicit for multi-arch
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -ldflags="-w -s" -o /app/kubernetes_ping_exporter
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o /app/kubernetes_ping_exporter
 
 # Final stage - will use the target platform
-FROM --platform=$TARGETPLATFORM alpine
+FROM --platform=${TARGETPLATFORM:-linux/amd64} alpine
 
 WORKDIR /app
 
