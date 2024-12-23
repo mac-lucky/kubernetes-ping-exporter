@@ -11,9 +11,7 @@ WORKDIR /src
 
 # Copy only go.mod and go.sum first for better layer caching
 COPY go.* ./
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    go mod download
+RUN go mod download
 
 # Copy source code
 COPY kubernetes_ping_exporter .
