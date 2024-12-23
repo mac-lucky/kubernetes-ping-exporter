@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.4
 
-# Platform arguments
-ARG TARGETARCH
-ARG BUILDPLATFORM
+# Platform arguments with default values
+ARG TARGETARCH=amd64
+ARG TARGETPLATFORM=linux/amd64
 
 # Build stage - will automatically use the correct platform
 FROM --platform=$BUILDPLATFORM golang:alpine AS builder
