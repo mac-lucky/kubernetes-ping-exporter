@@ -1,15 +1,12 @@
 # Syntax version for better caching and features
 # syntax=docker/dockerfile:1.4
 
-# Build stage
-FROM --platform=$BUILDPLATFORM golang:alpine AS builder
-
 # Add platform arguments
 ARG TARGETARCH
 ARG BUILDPLATFORM
 
-# Install build dependencies
-RUN apk add --no-cache ca-certificates git
+# Build stage
+FROM --platform=$BUILDPLATFORM golang:alpine AS builder
 
 # Set working directory
 WORKDIR /src
@@ -29,7 +26,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 \
     GOOS=linux \
     GOARCH=$TARGETARCH \
-    go build -o /app/kubernetes_ping_exporter
+    go build -ldflags="-w -s" -o /app/kubernetes_ping_exporter
 
 # Final stage
 FROM --platform=$TARGETPLATFORM alpine
