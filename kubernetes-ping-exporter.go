@@ -228,11 +228,13 @@ func main() {
 				wg.Add(1)
 				go func(t targetInfo) {
 					defer wg.Done()
+					log.Printf("Pinging target: %s from source IP: %s", t.ip, sourceIP)
 					stats, err := pingTarget(t.ip)
 					if err != nil {
 						log.Printf("Error pinging %s: %v", t.ip, err)
 						return
 					}
+					log.Printf("Ping result for target %s: Packets received: %d, Packet Loss: %0.2f%%", t.ip, stats.PacketsRecv, stats.PacketLoss)
 					updateMetrics(sourceIP, sourceNode, sourcePod, t, stats)
 					previousTargets.Store(t.ip, t.nodeName)
 				}(target)
@@ -250,6 +252,7 @@ func main() {
 					}
 				}
 				if !found {
+					log.Printf("Removing obsolete target from metrics: %s", targetIP)
 					previousTargets.Delete(targetIP)
 					nodeName, _ := value.(string)
 					labels := prometheus.Labels{
