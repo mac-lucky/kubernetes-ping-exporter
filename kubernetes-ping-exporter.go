@@ -91,7 +91,8 @@ type PingExporter struct {
     clientset    *kubernetes.Clientset
     interval     time.Duration
     mutex        sync.RWMutex
-    targets      []string
+    targets      map[string]bool  // Changed from slice to map for tracking active targets
+    lastSeen     map[string]time.Time  // Track when each target was last seen
 }
 
 func init() {
@@ -143,8 +144,44 @@ func NewPingExporter() (*PingExporter, error) {
         configMap: configMap,
         clientset: clientset,
         interval:  time.Duration(interval) * time.Second,
-        targets:   make([]string, 0),
+        targets:   make(map[string]bool),
+        lastSeen:  make(map[string]time.Time),
     }, nil
+}
+
+func (pe *PingExporter) cleanupOldMetrics() {
+    pe.mutex.Lock()
+    defer pe.mutex.Unlock()
+
+    now := time.Now()
+    staleThreshold := 3 * pe.interval // Consider a target stale after missing 3 intervals
+
+    // Check for stale targets
+    for target, lastSeen := range pe.lastSeen {
+        if now.Sub(lastSeen) > staleThreshold {
+            // Delete metrics for stale target
+            labels := prometheus.Labels{
+                "source":          pe.podIP,
+                "destination":     target,
+                "source_nodename": pe.nodeName,
+                "dest_nodename":   "unknown",
+                "source_podname":  pe.podName,
+            }
+
+            rttBest.Delete(labels)
+            rttWorst.Delete(labels)
+            rttMean.Delete(labels)
+            rttStdDev.Delete(labels)
+            lossRatio.Delete(labels)
+            targetUp.Delete(labels)
+
+            // Remove target from tracking
+            delete(pe.targets, target)
+            delete(pe.lastSeen, target)
+
+            log.Printf("Cleaned up metrics for stale target: %s", target)
+        }
+    }
 }
 
 func (pe *PingExporter) updateTargets() error {
@@ -165,12 +202,17 @@ func (pe *PingExporter) updateTargets() error {
     pe.mutex.Lock()
     defer pe.mutex.Unlock()
 
-    pe.targets = make([]string, 0)
+    // Reset current targets but keep the map
+    for k := range pe.targets {
+        pe.targets[k] = false
+    }
     
     // Add pod IPs
+    now := time.Now()
     for _, pod := range pods.Items {
         if pod.Status.PodIP != pe.podIP {
-            pe.targets = append(pe.targets, pod.Status.PodIP)
+            pe.targets[pod.Status.PodIP] = true
+            pe.lastSeen[pod.Status.PodIP] = now
         }
     }
 
@@ -180,7 +222,8 @@ func (pe *PingExporter) updateTargets() error {
             for _, ip := range strings.Split(ips, ",") {
                 ip = strings.TrimSpace(ip)
                 if ip != "" {
-                    pe.targets = append(pe.targets, ip)
+                    pe.targets[ip] = true
+                    pe.lastSeen[ip] = now
                 }
             }
         }
@@ -213,7 +256,7 @@ func (pe *PingExporter) pingTarget(target string) {
         "source":          pe.podIP,
         "destination":     target,
         "source_nodename": pe.nodeName,
-        "dest_nodename":   "unknown", // Could be enhanced to lookup node name for pod IPs
+        "dest_nodename":   "unknown",
         "source_podname":  pe.podName,
     }
 
@@ -241,21 +284,25 @@ func (pe *PingExporter) Start() {
     ticker := time.NewTicker(pe.interval)
     defer ticker.Stop()
 
+    cleanupTicker := time.NewTicker(pe.interval)
+    defer cleanupTicker.Stop()
+
     for {
-        if err := pe.updateTargets(); err != nil {
-            log.Printf("Error updating targets: %v", err)
+        select {
+        case <-ticker.C:
+            if err := pe.updateTargets(); err != nil {
+                log.Printf("Error updating targets: %v", err)
+            }
+
+            pe.mutex.RLock()
+            for target := range pe.targets {
+                go pe.pingTarget(target)
+            }
+            pe.mutex.RUnlock()
+
+        case <-cleanupTicker.C:
+            pe.cleanupOldMetrics()
         }
-
-        pe.mutex.RLock()
-        targets := make([]string, len(pe.targets))
-        copy(targets, pe.targets)
-        pe.mutex.RUnlock()
-
-        for _, target := range targets {
-            go pe.pingTarget(target)
-        }
-
-        <-ticker.C
     }
 }
 
