@@ -1,14 +1,12 @@
-# Syntax version for better caching and features
 # syntax=docker/dockerfile:1.4
 
-# Add platform arguments
+# Platform arguments
 ARG TARGETARCH
 ARG BUILDPLATFORM
 
-# Build stage
+# Build stage - will automatically use the correct platform
 FROM --platform=$BUILDPLATFORM golang:alpine AS builder
 
-# Set working directory
 WORKDIR /src
 
 # Copy only go.mod and go.sum first for better layer caching
@@ -20,15 +18,13 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Copy source code
 COPY . .
 
-# Build the application with optimizations
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 \
-    GOOS=linux \
-    GOARCH=$TARGETARCH \
-    go build -o /app/kubernetes_ping_exporter
+# Make the build process more explicit for multi-arch
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH \
+    go build \
+    -ldflags="-w -s" \
+    -o /app/kubernetes_ping_exporter
 
-# Final stage
+# Final stage - will use the target platform
 FROM --platform=$TARGETPLATFORM alpine
 
 WORKDIR /app
