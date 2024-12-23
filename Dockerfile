@@ -16,7 +16,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
 
 # Copy source code
-COPY . .
+COPY kubernetes_ping_exporter .
 
 # Make the build process more explicit for multi-arch
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH \
