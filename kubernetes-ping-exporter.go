@@ -94,6 +94,7 @@ type PingExporter struct {
     targets      map[string]bool  // Changed from slice to map for tracking active targets
     lastSeen     map[string]time.Time  // Track when each target was last seen
     nodeNames    map[string]string  // Map IP to node name
+    cycleCount   int
 }
 
 func init() {
@@ -148,6 +149,7 @@ func NewPingExporter() (*PingExporter, error) {
         targets:   make(map[string]bool),
         lastSeen:  make(map[string]time.Time),
         nodeNames: make(map[string]string),
+        cycleCount: 0,
     }, nil
 }
 
@@ -201,61 +203,84 @@ func (pe *PingExporter) cleanupOldMetrics() {
 }
 
 func (pe *PingExporter) updateTargets() error {
-    log.Printf("Updating targets...")
+    log.Printf("Updating targets (cycle %d)...", pe.cycleCount)
     
-    // Get pods with ping-exporter label
-    pods, err := pe.clientset.CoreV1().Pods(pe.namespace).List(context.Background(), metav1.ListOptions{
-        LabelSelector: "app=ping-exporter",
-    })
-    if err != nil {
-        return fmt.Errorf("failed to list pods: %v", err)
-    }
-    log.Printf("Found %d pods with ping-exporter label", len(pods.Items))
-
-    // Get additional IPs from ConfigMap
-    cm, err := pe.clientset.CoreV1().ConfigMaps(pe.namespace).Get(context.Background(), pe.configMap, metav1.GetOptions{})
-    if err != nil {
-        log.Printf("Warning: failed to get ConfigMap %s: %v", pe.configMap, err)
-    } else {
-        log.Printf("Successfully retrieved ConfigMap %s", pe.configMap)
-    }
-
-    pe.mutex.Lock()
-    defer pe.mutex.Unlock()
-
-    oldTargets := len(pe.targets)
-    // Reset current targets but keep the map
-    for k := range pe.targets {
-        pe.targets[k] = false
-    }
-    
-    // Add pod IPs and update node name mapping
-    now := time.Now()
-    for _, pod := range pods.Items {
-        if pod.Status.PodIP != pe.podIP {
-            pe.targets[pod.Status.PodIP] = true
-            pe.lastSeen[pod.Status.PodIP] = now
-            pe.nodeNames[pod.Status.PodIP] = pod.Spec.NodeName
-            log.Printf("Added pod target: IP=%s, Node=%s", pod.Status.PodIP, pod.Spec.NodeName)
+    // Full refresh every 4 cycles
+    if pe.cycleCount%4 == 0 {
+        pods, err := pe.clientset.CoreV1().Pods(pe.namespace).List(context.Background(), metav1.ListOptions{
+            LabelSelector: "app=ping-exporter",
+        })
+        if err != nil {
+            return fmt.Errorf("failed to list pods: %v", err)
         }
-    }
 
-    // Add IPs from ConfigMap
-    if cm != nil {
-        if ips, ok := cm.Data["additional_ips"]; ok {
-            for _, ip := range strings.Split(ips, ",") {
-                ip = strings.TrimSpace(ip)
-                if ip != "" {
-                    pe.targets[ip] = true
-                    pe.lastSeen[ip] = now
-                    log.Printf("Added ConfigMap target: IP=%s (external)", ip)
-                    // External IPs won't have node names, they remain "unknown"
+        cm, err := pe.clientset.CoreV1().ConfigMaps(pe.namespace).Get(context.Background(), pe.configMap, metav1.GetOptions{})
+        if err != nil && !strings.Contains(err.Error(), "not found") {
+            log.Printf("Warning: failed to get ConfigMap %s: %v", pe.configMap, err)
+        }
+
+        pe.mutex.Lock()
+        // Create new maps for the refresh
+        newTargets := make(map[string]bool)
+        newNodeNames := make(map[string]string)
+        now := time.Now()
+
+        // Add pod IPs
+        for _, pod := range pods.Items {
+            if pod.Status.PodIP != pe.podIP {
+                newTargets[pod.Status.PodIP] = true
+                pe.lastSeen[pod.Status.PodIP] = now
+                newNodeNames[pod.Status.PodIP] = pod.Spec.NodeName
+            }
+        }
+
+        // Add ConfigMap IPs
+        if cm != nil {
+            if ips, ok := cm.Data["additional_ips"]; ok {
+                for _, ip := range strings.Split(ips, ",") {
+                    ip = strings.TrimSpace(ip)
+                    if ip != "" {
+                        newTargets[ip] = true
+                        pe.lastSeen[ip] = now
+                    }
                 }
             }
         }
+
+        // Check for removed targets and cleanup their metrics
+        for oldTarget := range pe.targets {
+            if !newTargets[oldTarget] {
+                nodeName := pe.nodeNames[oldTarget]
+                if nodeName == "" {
+                    nodeName = "unknown"
+                }
+                
+                labels := prometheus.Labels{
+                    "source":          pe.podIP,
+                    "destination":     oldTarget,
+                    "source_nodename": pe.nodeName,
+                    "dest_nodename":   nodeName,
+                    "source_podname":  pe.podName,
+                }
+
+                // Delete metrics for removed target
+                rttBest.Delete(labels)
+                rttWorst.Delete(labels)
+                rttMean.Delete(labels)
+                rttStdDev.Delete(labels)
+                lossRatio.Delete(labels)
+                targetUp.Delete(labels)
+                
+                delete(pe.lastSeen, oldTarget)
+            }
+        }
+
+        pe.targets = newTargets
+        pe.nodeNames = newNodeNames
+        pe.mutex.Unlock()
     }
 
-    log.Printf("Target update complete. Previous targets: %d, Current targets: %d", oldTargets, len(pe.targets))
+    pe.cycleCount++
     return nil
 }
 
