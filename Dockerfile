@@ -14,7 +14,7 @@ COPY go.* ./
 RUN go mod download
 
 # Copy source code
-COPY kubernetes_ping_exporter .
+COPY . .
 
 # Make the build process more explicit for multi-arch
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -ldflags="-w -s" -o /app/kubernetes_ping_exporter
