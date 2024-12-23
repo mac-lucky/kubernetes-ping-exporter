@@ -234,7 +234,7 @@ func main() {
 						return
 					}
 					updateMetrics(sourceIP, sourceNode, sourcePod, t, stats)
-					previousTargets.Store(t.ip, true)
+					previousTargets.Store(t.ip, t.nodeName)
 				}(target)
 			}
 			wg.Wait()
@@ -251,11 +251,12 @@ func main() {
 				}
 				if !found {
 					previousTargets.Delete(targetIP)
+					nodeName, _ := value.(string)
 					labels := prometheus.Labels{
 						"source":          sourceIP,
 						"destination":     targetIP,
 						"source_nodename": sourceNode,
-						"dest_nodename":   "unknown",
+						"dest_nodename":   nodeName,
 						"source_podname":  sourcePod,
 					}
 					pingUp.Delete(labels)
