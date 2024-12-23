@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -128,6 +129,21 @@ func getAdditionalIPs(clientset *kubernetes.Clientset, namespace string) ([]targ
 	return targets, nil
 }
 
+func getAllTargets(clientset *kubernetes.Clientset, namespace, sourceIP string) ([]targetInfo, error) {
+    podTargets, err := getPodIPs(clientset, namespace, sourceIP)
+    if err != nil {
+        return nil, fmt.Errorf("error getting pod IPs: %v", err)
+    }
+
+    additionalTargets, err := getAdditionalIPs(clientset, namespace)
+    if err != nil {
+        log.Printf("Warning: error getting additional IPs: %v", err)
+        // Continue with just pod targets if additional IPs fail
+    }
+
+    return append(podTargets, additionalTargets...), nil
+}
+
 func pingTarget(target string) (*probing.Statistics, error) {
 	pinger, err := probing.NewPinger(target)
 	if err != nil {
@@ -208,6 +224,8 @@ func main() {
 	defer ticker.Stop()
 
 	var previousTargets sync.Map
+	var loopCounter int
+    var cachedTargets []targetInfo
 
 	for {
 		select {
@@ -215,19 +233,23 @@ func main() {
 			log.Println("Shutting down...")
 			return
 		case <-ticker.C:
-			podTargets, err := getPodIPs(clientset, namespace, sourceIP)
-			if err != nil {
-				log.Printf("Error getting pod IPs: %v", err)
-				continue
-			}
+			loopCounter++
+            var targets []targetInfo
+            var err error
 
-			additionalTargets, err := getAdditionalIPs(clientset, namespace)
-			if err != nil {
-				log.Printf("Error getting additional IPs: %v", err)
-			}
+            if loopCounter%4 == 1 {
+                log.Println("Refreshing targets from Kubernetes API")
+                cachedTargets, err = getAllTargets(clientset, namespace, sourceIP)
+                if err != nil {
+                    log.Printf("Error refreshing targets: %v", err)
+                    continue
+                }
+            } else {
+                log.Printf("Using cached targets (refresh in %d iterations)", 4-(loopCounter%4))
+            }
+            
+            targets = cachedTargets
 
-			targets := append(podTargets, additionalTargets...)
-			
 			var wg sync.WaitGroup
 			for _, target := range targets {
 				wg.Add(1)
