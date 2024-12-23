@@ -10,6 +10,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"strconv"
 
 	probing "github.com/prometheus-community/pro-bing"
 	"github.com/prometheus/client_golang/prometheus"
@@ -199,7 +200,11 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
-	ticker := time.NewTicker(15 * time.Second)
+	intervalSeconds, err := strconv.Atoi(os.Getenv("CHECK_INTERVAL_SECONDS"))
+	if err != nil || intervalSeconds <= 0 {
+		intervalSeconds = 15
+	}
+	ticker := time.NewTicker(time.Duration(intervalSeconds) * time.Second)
 	defer ticker.Stop()
 
 	var previousTargets sync.Map
