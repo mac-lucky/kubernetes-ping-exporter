@@ -152,15 +152,18 @@ func NewPingExporter() (*PingExporter, error) {
 }
 
 func (pe *PingExporter) cleanupOldMetrics() {
+    log.Printf("Starting metrics cleanup...")
     pe.mutex.Lock()
     defer pe.mutex.Unlock()
 
     now := time.Now()
     staleThreshold := 3 * pe.interval // Consider a target stale after missing 3 intervals
+    staleCount := 0
 
     // Check for stale targets
     for target, lastSeen := range pe.lastSeen {
         if now.Sub(lastSeen) > staleThreshold {
+            log.Printf("Found stale target %s (last seen: %v)", target, lastSeen)
             // Delete metrics for stale target
             labels := prometheus.Labels{
                 "source":          pe.podIP,
@@ -182,11 +185,16 @@ func (pe *PingExporter) cleanupOldMetrics() {
             delete(pe.lastSeen, target)
 
             log.Printf("Cleaned up metrics for stale target: %s", target)
+            staleCount++
         }
     }
+    
+    log.Printf("Metrics cleanup complete. Removed %d stale targets", staleCount)
 }
 
 func (pe *PingExporter) updateTargets() error {
+    log.Printf("Updating targets...")
+    
     // Get pods with ping-exporter label
     pods, err := pe.clientset.CoreV1().Pods(pe.namespace).List(context.Background(), metav1.ListOptions{
         LabelSelector: "app=ping-exporter",
@@ -194,16 +202,20 @@ func (pe *PingExporter) updateTargets() error {
     if err != nil {
         return fmt.Errorf("failed to list pods: %v", err)
     }
+    log.Printf("Found %d pods with ping-exporter label", len(pods.Items))
 
     // Get additional IPs from ConfigMap
     cm, err := pe.clientset.CoreV1().ConfigMaps(pe.namespace).Get(context.Background(), pe.configMap, metav1.GetOptions{})
     if err != nil {
         log.Printf("Warning: failed to get ConfigMap %s: %v", pe.configMap, err)
+    } else {
+        log.Printf("Successfully retrieved ConfigMap %s", pe.configMap)
     }
 
     pe.mutex.Lock()
     defer pe.mutex.Unlock()
 
+    oldTargets := len(pe.targets)
     // Reset current targets but keep the map
     for k := range pe.targets {
         pe.targets[k] = false
@@ -216,6 +228,7 @@ func (pe *PingExporter) updateTargets() error {
             pe.targets[pod.Status.PodIP] = true
             pe.lastSeen[pod.Status.PodIP] = now
             pe.nodeNames[pod.Status.PodIP] = pod.Spec.NodeName
+            log.Printf("Added pod target: IP=%s, Node=%s", pod.Status.PodIP, pod.Spec.NodeName)
         }
     }
 
@@ -227,16 +240,20 @@ func (pe *PingExporter) updateTargets() error {
                 if ip != "" {
                     pe.targets[ip] = true
                     pe.lastSeen[ip] = now
+                    log.Printf("Added ConfigMap target: IP=%s (external)", ip)
                     // External IPs won't have node names, they remain "unknown"
                 }
             }
         }
     }
 
+    log.Printf("Target update complete. Previous targets: %d, Current targets: %d", oldTargets, len(pe.targets))
     return nil
 }
 
 func (pe *PingExporter) pingTarget(target string) {
+    log.Printf("Starting ping for target %s", target)
+    
     pinger, err := probing.NewPinger(target)
     if err != nil {
         log.Printf("Error creating pinger for %s: %v", target, err)
@@ -247,6 +264,7 @@ func (pe *PingExporter) pingTarget(target string) {
     pinger.Timeout = time.Second * 5
     pinger.SetPrivileged(true)
 
+    log.Printf("Executing ping to %s (count=%d, timeout=%v)", target, pinger.Count, pinger.Timeout)
     err = pinger.Run()
     if err != nil {
         log.Printf("Error pinging %s: %v", target, err)
@@ -255,6 +273,9 @@ func (pe *PingExporter) pingTarget(target string) {
     }
 
     stats := pinger.Statistics()
+    log.Printf("Ping statistics for %s: sent=%d, recv=%d, loss=%v%%, min=%v, avg=%v, max=%v",
+        target, stats.PacketsSent, stats.PacketsRecv, stats.PacketLoss,
+        stats.MinRtt, stats.AvgRtt, stats.MaxRtt)
 
     pe.mutex.RLock()
     nodeName := pe.nodeNames[target]
@@ -262,6 +283,8 @@ func (pe *PingExporter) pingTarget(target string) {
         nodeName = "unknown"
     }
     pe.mutex.RUnlock()
+
+    log.Printf("Target %s maps to node %s", target, nodeName)
 
     labels := prometheus.Labels{
         "source":          pe.podIP,
