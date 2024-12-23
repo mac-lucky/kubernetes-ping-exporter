@@ -93,6 +93,7 @@ type PingExporter struct {
     mutex        sync.RWMutex
     targets      map[string]bool  // Changed from slice to map for tracking active targets
     lastSeen     map[string]time.Time  // Track when each target was last seen
+    nodeNames    map[string]string  // Map IP to node name
 }
 
 func init() {
@@ -146,6 +147,7 @@ func NewPingExporter() (*PingExporter, error) {
         interval:  time.Duration(interval) * time.Second,
         targets:   make(map[string]bool),
         lastSeen:  make(map[string]time.Time),
+        nodeNames: make(map[string]string),
     }, nil
 }
 
@@ -207,12 +209,13 @@ func (pe *PingExporter) updateTargets() error {
         pe.targets[k] = false
     }
     
-    // Add pod IPs
+    // Add pod IPs and update node name mapping
     now := time.Now()
     for _, pod := range pods.Items {
         if pod.Status.PodIP != pe.podIP {
             pe.targets[pod.Status.PodIP] = true
             pe.lastSeen[pod.Status.PodIP] = now
+            pe.nodeNames[pod.Status.PodIP] = pod.Spec.NodeName
         }
     }
 
@@ -224,6 +227,7 @@ func (pe *PingExporter) updateTargets() error {
                 if ip != "" {
                     pe.targets[ip] = true
                     pe.lastSeen[ip] = now
+                    // External IPs won't have node names, they remain "unknown"
                 }
             }
         }
@@ -252,11 +256,18 @@ func (pe *PingExporter) pingTarget(target string) {
 
     stats := pinger.Statistics()
 
+    pe.mutex.RLock()
+    nodeName := pe.nodeNames[target]
+    if nodeName == "" {
+        nodeName = "unknown"
+    }
+    pe.mutex.RUnlock()
+
     labels := prometheus.Labels{
         "source":          pe.podIP,
         "destination":     target,
         "source_nodename": pe.nodeName,
-        "dest_nodename":   "unknown",
+        "dest_nodename":   nodeName,
         "source_podname":  pe.podName,
     }
 
