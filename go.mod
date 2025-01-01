@@ -1,4 +1,4 @@
-module kubernetes-ping-exporter
+module kubernetes_ping_exporter
 
 go 1.23.4
 
