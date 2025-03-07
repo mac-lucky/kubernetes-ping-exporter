@@ -8,11 +8,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
-	"strconv"
 
 	probing "github.com/prometheus-community/pro-bing"
 	"github.com/prometheus/client_golang/prometheus"
@@ -118,7 +118,7 @@ func getPodIPs(clientset *kubernetes.Clientset, namespace, currentPodIP string) 
 }
 
 // getAdditionalIPs retrieves additional target IPs from ConfigMap
-func getAdditionalIPs(clientset *kubernetes.Clientset, namespace string) ([]targetInfo, error) {
+func getAdditionalIPs(clientset *kubernetes.Clientset, namespace string, loggedConfigMapError *bool) ([]targetInfo, error) {
 	configMapName := os.Getenv("CONFIG_MAP_NAME")
 	if configMapName == "" {
 		configMapName = defaultConfigMap
@@ -126,7 +126,11 @@ func getAdditionalIPs(clientset *kubernetes.Clientset, namespace string) ([]targ
 
 	configMap, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.Background(), configMapName, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get ConfigMap: %v", err)
+		if !*loggedConfigMapError {
+			log.Printf("Warning: failed to get ConfigMap %s: %v (this warning will be logged only once)", configMapName, err)
+			*loggedConfigMapError = true
+		}
+		return nil, err
 	}
 
 	var targets []targetInfo
@@ -146,15 +150,14 @@ func getAdditionalIPs(clientset *kubernetes.Clientset, namespace string) ([]targ
 }
 
 // getAllTargets combines pod IPs and additional IPs from ConfigMap
-func getAllTargets(clientset *kubernetes.Clientset, namespace, sourceIP string) ([]targetInfo, error) {
+func getAllTargets(clientset *kubernetes.Clientset, namespace, sourceIP string, loggedConfigMapError *bool) ([]targetInfo, error) {
 	podTargets, err := getPodIPs(clientset, namespace, sourceIP)
 	if err != nil {
 		return nil, fmt.Errorf("error getting pod IPs: %v", err)
 	}
 
-	additionalTargets, err := getAdditionalIPs(clientset, namespace)
+	additionalTargets, err := getAdditionalIPs(clientset, namespace, loggedConfigMapError)
 	if err != nil {
-		log.Printf("Warning: error getting additional IPs: %v", err)
 		// Continue with just pod targets if additional IPs fail
 		return podTargets, nil
 	}
@@ -169,8 +172,9 @@ func pingTarget(target string) (*probing.Statistics, error) {
 		return nil, err
 	}
 	
-	pinger.Count = 10
-	pinger.Timeout = time.Second * 4
+	pinger.Count = 5                       // Reduced from 10 to 5 for more frequent updates
+	pinger.Interval = time.Millisecond * 500 // Add interval between packets
+	pinger.Timeout = time.Second * 8       // Increased timeout to give packets more time to return
 	pinger.SetPrivileged(true)
 	
 	if err := pinger.Run(); err != nil {
@@ -295,6 +299,7 @@ func main() {
 	var previousTargets sync.Map
 	var loopCounter int
 	var cachedTargets []targetInfo
+	loggedConfigMapError := false
 
 	// Main loop
 	for {
@@ -308,7 +313,7 @@ func main() {
 			// Refresh targets periodically
 			if loopCounter%targetRefreshRate == 1 {
 				log.Println("Refreshing targets from Kubernetes API")
-				newTargets, err := getAllTargets(clientset, namespace, sourceIP)
+				newTargets, err := getAllTargets(clientset, namespace, sourceIP, &loggedConfigMapError)
 				if err != nil {
 					log.Printf("Error refreshing targets: %v", err)
 					continue
