@@ -68,9 +68,71 @@ All metrics include the following labels:
 
 ## Building
 
+### Local Build
+
 To build the Docker image:
 ```bash
+# Quick build (uses default Go version)
 docker build -t kubernetes-ping-exporter .
+
+# Exact build (uses Go version from go.mod - recommended)
+docker build --build-arg GO_VERSION=$(grep "^go " go.mod | cut -d' ' -f2) -t kubernetes-ping-exporter .
+
+# Development build (includes debugging tools)
+docker build --target development -t kubernetes-ping-exporter:dev .
+```
+
+### Pre-built Images
+
+Pre-built images are available on Docker Hub and GitHub Container Registry:
+```bash
+# Docker Hub
+docker pull maclucky/kubernetes-ping-exporter:latest
+
+# GitHub Container Registry
+docker pull ghcr.io/mac-lucky/kubernetes-ping-exporter:latest
+```
+
+### Multi-platform Build
+```bash
+# Build for multiple architectures
+docker buildx build --platform linux/amd64,linux/arm64 -t kubernetes-ping-exporter .
+```
+
+## Development
+
+### Quick Development Workflow
+```bash
+# 1. Build locally
+docker build --build-arg GO_VERSION=$(grep "^go " go.mod | cut -d' ' -f2) -t kubernetes-ping-exporter .
+
+# 2. Test run (without Kubernetes)
+docker run -d -p 9107:9107 --name ping-test kubernetes-ping-exporter
+
+# 3. Check metrics
+curl http://localhost:9107/metrics
+
+# 4. View logs
+docker logs ping-test
+
+# 5. Clean up
+docker stop ping-test && docker rm ping-test
+```
+
+### Development Container
+```bash
+# Build development image with debugging tools
+docker build --target development -t kubernetes-ping-exporter:dev .
+
+# Run with shell access
+docker run -it --rm -p 9107:9107 -v $(pwd):/workspace kubernetes-ping-exporter:dev /bin/sh
+```
+
+### Building from Source
+```bash
+go mod download
+go build -o kubernetes_ping_exporter
+./kubernetes_ping_exporter
 ```
 
 ## License
