@@ -1,9 +1,7 @@
 # Optimized multi-stage Dockerfile for Kubernetes Ping Exporter
 # Uses distroless base images for maximum security and minimal image size
 
-# Build stage - Use the official Go image for building
-FROM --platform=${BUILDPLATFORM:-linux/amd64} golang:${GO_VERSION:-1.23.4}-alpine AS builder
-
+# Declare ARGs before any FROM statements
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 ARG TARGETOS
@@ -12,6 +10,9 @@ ARG GO_VERSION
 ARG VERSION="dev"
 ARG COMMIT_SHA="unknown"
 ARG BUILD_DATE="unknown"
+
+# Build stage - Use the official Go image for building
+FROM --platform=${BUILDPLATFORM:-linux/amd64} golang:${GO_VERSION}-alpine AS builder
 
 WORKDIR /src
 
@@ -39,7 +40,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     echo "Binary built successfully"
 
 # Runtime stage - Use Google's distroless image for maximum security
-FROM --platform=${TARGETPLATFORM:-linux/amd64} gcr.io/distroless/static-debian12:nonroot AS runner
+FROM gcr.io/distroless/static-debian12:nonroot AS runner
 
 # Copy ca-certificates and application binary in one layer
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
@@ -63,7 +64,7 @@ LABEL org.opencontainers.image.title="Kubernetes Ping Exporter" \
 ENTRYPOINT ["/app/kubernetes_ping_exporter"]
 
 # Development stage - includes shell and additional tools for debugging
-FROM --platform=${TARGETPLATFORM:-linux/amd64} alpine:3.19 AS development
+FROM alpine:3.19 AS development
 
 # Install tools, copy binary, create user in one layer
 RUN apk add --no-cache ca-certificates curl wget iputils && \
