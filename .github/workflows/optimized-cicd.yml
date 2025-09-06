@@ -16,6 +16,7 @@ name: Optimized CI/CD - Kubernetes Ping Exporter
       - ".gitignore"
   release:
     types: [published]
+  workflow_dispatch:
 
 env:
   REGISTRY_IMAGE_DOCKERHUB: maclucky/kubernetes-ping-exporter
