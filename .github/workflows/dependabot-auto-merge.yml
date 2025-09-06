@@ -62,11 +62,11 @@ jobs:
             contains(github.event.pull_request.title, 'docker')
           )
         run: |
-          gh pr merge --auto --squash "${{ github.event.pull_request.number }}" || {
+          gh pr merge --auto --squash --delete-branch "${{ github.event.pull_request.number }}" || {
             echo "Failed to enable auto-merge, attempting direct merge since CI passed"
-            gh pr merge --squash "${{ github.event.pull_request.number }}"
+            gh pr merge --squash --delete-branch "${{ github.event.pull_request.number }}"
           }
-          echo "✅ Merged Dependabot PR: ${{ github.event.pull_request.title }}"
+          echo "✅ Merged Dependabot PR and deleted source branch: ${{ github.event.pull_request.title }}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
