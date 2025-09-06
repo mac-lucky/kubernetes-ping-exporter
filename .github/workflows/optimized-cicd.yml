@@ -228,12 +228,12 @@ jobs:
           
           # Test metrics endpoint
           response=$(curl -s http://localhost:9107/metrics)
-          if echo "$response" | grep -q "ping_duration_seconds"; then
-            echo "✅ Metrics endpoint working - ping_duration_seconds found"
+          if echo "$response" | grep -q "ping_loss_ratio"; then
+            echo "✅ Metrics endpoint working - ping_loss_ratio found"
             echo "Sample metrics:"
             echo "$response" | head -20
           else
-            echo "❌ Metrics endpoint not working - ping_duration_seconds not found"
+            echo "❌ Metrics endpoint not working - ping_loss_ratio not found"
             echo "Response received:"
             echo "$response"
             exit 1
