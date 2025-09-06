@@ -2,12 +2,12 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: ping-exporter
-  namespace: monitoring
+  namespace: {{ .Values.namespace }}
 spec:
   updateStrategy:
-    type: RollingUpdate
+    type: {{ .Values.daemonset.updateStrategy.type }}
     rollingUpdate:
-      maxUnavailable: 100%
+      maxUnavailable: {{ .Values.daemonset.updateStrategy.rollingUpdate.maxUnavailable }}
   selector:
     matchLabels:
       app: ping-exporter
@@ -16,11 +16,11 @@ spec:
       labels:
         app: ping-exporter
     spec:
-      serviceAccountName: ping-exporter
+      serviceAccountName: {{ .Values.serviceAccount.name }}
       containers:
       - name: ping-exporter
-        image: maclucky/kubernetes-ping-exporter
-        imagePullPolicy: Always
+        image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
         env:
         - name: POD_IP
           valueFrom:
@@ -41,6 +41,22 @@ spec:
         - name: CONFIG_MAP_NAME
           value: "ping-exporter-config"
         ports:
-        - containerPort: 9107
-          name: metrics
+        - containerPort: {{ .Values.service.port }}
+          name: {{ .Values.service.name }}
+        {{- if .Values.resources }}
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        {{- end }}
       restartPolicy: Always
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      {{- end }}
+      {{- if .Values.tolerations }}
+      tolerations:
+        {{- toYaml .Values.tolerations | nindent 8 }}
+      {{- end }}
+      {{- if .Values.affinity }}
+      affinity:
+        {{- toYaml .Values.affinity | nindent 8 }}
+      {{- end }}

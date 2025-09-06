@@ -2,13 +2,13 @@ kind: Service
 apiVersion: v1
 metadata:
   name: ping-exporter
-  namespace: monitoring
+  namespace: {{ .Values.namespace }}
   labels:
     app: ping-exporter
 spec:
-  clusterIP: None
+  type: {{ .Values.service.type }}
   selector:
     app: ping-exporter
   ports:
-    - name: metrics
-      port: 9107
+    - name: {{ .Values.service.name }}
+      port: {{ .Values.service.port }}

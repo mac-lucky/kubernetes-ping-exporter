@@ -107,7 +107,135 @@ jobs:
           scan-ref: "."
           format: "table"
 
-  # Job 2: Build and Push Multi-arch Container Images
+  # Job 2: Kubernetes Integration Tests
+  container-test:
+    name: Kubernetes Integration Test
+    runs-on: ubuntu-latest
+    needs: [setup, code-analysis]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build test container
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: kubernetes-ping-exporter:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            GO_VERSION=${{ needs.setup.outputs.go-version }}
+
+      - name: Setup Minikube with 2 nodes
+        uses: medyagh/setup-minikube@latest
+        with:
+          minikube-version: 'latest'
+          driver: docker
+          container-runtime: docker
+          kubernetes-version: v1.32.0
+          cpus: 2
+          memory: 2048m
+          addons: metrics-server
+          start-args: '--nodes=2'
+
+      - name: Load Docker image into Minikube
+        run: |
+          minikube image load kubernetes-ping-exporter:test
+
+      - name: Create monitoring namespace
+        run: |
+          kubectl create namespace monitoring || true
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'latest'
+
+      - name: Deploy ping-exporter with Helm
+        run: |
+          helm upgrade --install ping-exporter ./infra-ping-exporter \
+            --namespace monitoring \
+            --set image.tag=test \
+            --set image.repository=kubernetes-ping-exporter \
+            --set image.pullPolicy=Never \
+            --wait --timeout=300s
+
+      - name: Verify deployment
+        run: |
+          echo "=== Checking deployment status ==="
+          kubectl get pods -n monitoring -l app=ping-exporter -o wide
+          kubectl get daemonset -n monitoring
+          kubectl get services -n monitoring
+          kubectl get configmap -n monitoring
+
+      - name: Wait for pods to be ready
+        run: |
+          kubectl wait --for=condition=ready pod -l app=ping-exporter -n monitoring --timeout=120s
+
+      - name: Check logs
+        run: |
+          echo "=== Application logs ==="
+          kubectl logs -l app=ping-exporter -n monitoring --tail=50
+
+      - name: Test metrics endpoint via port-forward
+        run: |
+          echo "=== Testing metrics endpoint ==="
+          kubectl port-forward -n monitoring svc/ping-exporter 9107:9107 &
+          PF_PID=$!
+          sleep 10
+          
+          # Test metrics endpoint
+          response=$(curl -s http://localhost:9107/metrics)
+          if echo "$response" | grep -q "ping_duration_seconds"; then
+            echo "✅ Metrics endpoint working - ping_duration_seconds found"
+            echo "Sample metrics:"
+            echo "$response" | head -20
+          else
+            echo "❌ Metrics endpoint not working - ping_duration_seconds not found"
+            echo "Response received:"
+            echo "$response"
+            exit 1
+          fi
+          
+          # Cleanup
+          kill $PF_PID || true
+
+      - name: Health check
+        run: |
+          echo "=== Health check ==="
+          # Check if all pods are running
+          READY_PODS=$(kubectl get pods -n monitoring -l app=ping-exporter -o jsonpath='{.items[*].status.phase}' | grep -o Running | wc -l)
+          TOTAL_PODS=$(kubectl get pods -n monitoring -l app=ping-exporter --no-headers | wc -l)
+          
+          echo "Ready pods: $READY_PODS / $TOTAL_PODS"
+          
+          if [ "$READY_PODS" -eq "$TOTAL_PODS" ] && [ "$TOTAL_PODS" -gt 0 ]; then
+            echo "✅ All pods are running successfully"
+          else
+            echo "❌ Not all pods are running"
+            kubectl describe pods -n monitoring -l app=ping-exporter
+            exit 1
+          fi
+
+      - name: Container security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "kubernetes-ping-exporter:test"
+          format: "table"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          helm uninstall ping-exporter -n monitoring || true
+          kubectl delete namespace monitoring || true
+
+
+  # Job 3: Build and Push Multi-arch Container Images
   build-and-push:
     name: Build & Push Container Images
     runs-on: ubuntu-latest
