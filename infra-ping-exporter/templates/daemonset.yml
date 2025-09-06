@@ -17,6 +17,10 @@ spec:
         app: ping-exporter
     spec:
       serviceAccountName: {{ .Values.serviceAccount.name }}
+      {{- if .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
       containers:
       - name: ping-exporter
         image: {{ .Values.image.repository }}:{{ .Values.image.tag }}

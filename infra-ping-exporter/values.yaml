@@ -36,10 +36,22 @@ daemonset:
     rollingUpdate:
       maxUnavailable: 100%
 
+# Pod-level security context
+podSecurityContext:
+  sysctls:
+    - name: net.ipv4.ping_group_range
+      value: "0 2147483647"
+
+# Container-level security context
 securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
   capabilities:
-    add:
-      - NET_RAW
+    drop:
+      - ALL
 
 resources: {}
   # limits:
