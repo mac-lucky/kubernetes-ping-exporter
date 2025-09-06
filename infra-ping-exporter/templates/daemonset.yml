@@ -21,6 +21,10 @@ spec:
       - name: ping-exporter
         image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
+        {{- if .Values.securityContext }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
         env:
         - name: POD_IP
           valueFrom:

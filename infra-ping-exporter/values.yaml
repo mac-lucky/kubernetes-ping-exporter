@@ -36,6 +36,11 @@ daemonset:
     rollingUpdate:
       maxUnavailable: 100%
 
+securityContext:
+  capabilities:
+    add:
+      - NET_RAW
+
 resources: {}
   # limits:
   #   cpu: 100m

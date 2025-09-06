@@ -107,11 +107,13 @@ jobs:
           scan-ref: "."
           format: "table"
 
-  # Job 2: Kubernetes Integration Tests
-  container-test:
-    name: Kubernetes Integration Test
+  # Job 2: Build Container Image
+  build-container:
+    name: Build Container Image
     runs-on: ubuntu-latest
     needs: [setup, code-analysis]
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -119,7 +121,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build test container
+      - name: Build container
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -128,8 +131,36 @@ jobs:
           tags: kubernetes-ping-exporter:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          outputs: type=docker,dest=/tmp/kubernetes-ping-exporter.tar
           build-args: |
             GO_VERSION=${{ needs.setup.outputs.go-version }}
+
+      - name: Upload container artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-image
+          path: /tmp/kubernetes-ping-exporter.tar
+          retention-days: 1
+
+  # Job 3: Kubernetes Integration Tests
+  container-test:
+    name: Kubernetes Integration Test
+    runs-on: ubuntu-latest
+    needs: [setup, build-container]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download container artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: container-image
+          path: /tmp
+
+      - name: Load container image
+        run: |
+          docker load --input /tmp/kubernetes-ping-exporter.tar
+          docker image ls -a
 
       - name: Setup Minikube with 2 nodes
         uses: medyagh/setup-minikube@latest
@@ -241,11 +272,11 @@ jobs:
           kubectl delete namespace monitoring || true
 
 
-  # Job 3: Build and Push Multi-arch Container Images
+  # Job 4: Build and Push Multi-arch Container Images
   build-and-push:
     name: Build & Push Container Images
     runs-on: ubuntu-latest
-    needs: [setup, code-analysis]
+    needs: [setup, build-container]
     if: github.event_name == 'push' || github.event_name == 'release'
     environment: maclucky
     permissions:
