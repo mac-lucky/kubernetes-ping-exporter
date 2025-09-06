@@ -178,6 +178,11 @@ jobs:
         run: |
           kubectl wait --for=condition=ready pod -l app=ping-exporter -n monitoring --timeout=120s
 
+      - name: Wait for application startup
+        run: |
+          echo "=== Waiting 60 seconds for application to fully start ==="
+          sleep 60
+
       - name: Check logs
         run: |
           echo "=== Application logs ==="
