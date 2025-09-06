@@ -175,7 +175,7 @@ func pingTarget(target string) (*probing.Statistics, error) {
 	pinger.Count = 5                       // Reduced from 10 to 5 for more frequent updates
 	pinger.Interval = time.Millisecond * 500 // Add interval between packets
 	pinger.Timeout = time.Second * 8       // Increased timeout to give packets more time to return
-	pinger.SetPrivileged(true)
+	pinger.SetPrivileged(false)            // Use unprivileged ping for non-root containers
 	
 	if err := pinger.Run(); err != nil {
 		return nil, err
