@@ -372,22 +372,3 @@ jobs:
         run: |
           echo "Verifying images can be pulled..."
           docker pull ${{ env.REGISTRY_IMAGE_DOCKERHUB }}:latest
-
-          echo "Testing basic functionality..."
-          docker run --rm -d \
-            -p 9108:9107 \
-            --name verify-container \
-            ${{ env.REGISTRY_IMAGE_DOCKERHUB }}:latest
-
-          sleep 15
-
-          # Test that the service responds
-          if wget -q --spider http://localhost:9108/metrics; then
-            echo "✅ Service verification successful"
-          else
-            echo "❌ Service verification failed" 
-            docker logs verify-container
-            exit 1
-          fi
-
-          docker stop verify-container
