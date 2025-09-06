@@ -33,6 +33,9 @@ updates:
     allow:
       - dependency-type: "direct"
       - dependency-type: "indirect"
+    # Auto-merge configuration
+    pull-request-branch-name:
+      separator: "/"
     # Security updates get priority
     target-branch: "master"
 
@@ -53,6 +56,9 @@ updates:
       - "dependencies"
       - "github-actions"
       - "ci/cd"
+    # Auto-merge minor and patch updates for actions
+    pull-request-branch-name:
+      separator: "/"
 
   # Enable version updates for Docker base images
   - package-ecosystem: "docker"
@@ -70,3 +76,6 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+    # Auto-merge patch updates for Docker
+    pull-request-branch-name:
+      separator: "/"

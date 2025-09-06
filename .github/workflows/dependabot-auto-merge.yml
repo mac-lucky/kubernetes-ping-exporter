@@ -1,0 +1,85 @@
+---
+name: Dependabot Auto-Merge
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Auto-merge Dependabot PRs
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get PR details
+        id: pr-details
+        run: |
+          echo "title=${{ github.event.pull_request.title }}" >> $GITHUB_OUTPUT
+          echo "author=${{ github.event.pull_request.user.login }}" >> $GITHUB_OUTPUT
+
+      - name: Auto-approve PR
+        if: github.actor == 'dependabot[bot]'
+        run: |
+          gh pr review --approve "${{ github.event.pull_request.number }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Wait for CI checks
+        uses: fountainhead/action-wait-for-check@v1.1.0
+        id: wait-for-ci
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: "Code Quality Analysis"
+          ref: ${{ github.event.pull_request.head.sha }}
+          timeoutSeconds: 1800
+          intervalSeconds: 30
+
+      - name: Wait for container test
+        uses: fountainhead/action-wait-for-check@v1.1.0
+        id: wait-for-container-test
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: "Kubernetes Integration Test"
+          ref: ${{ github.event.pull_request.head.sha }}
+          timeoutSeconds: 1800
+          intervalSeconds: 30
+
+      - name: Auto-merge PR
+        if: |
+          steps.wait-for-ci.outputs.conclusion == 'success' &&
+          steps.wait-for-container-test.outputs.conclusion == 'success' &&
+          github.actor == 'dependabot[bot]' &&
+          (
+            contains(github.event.pull_request.title, 'patch') ||
+            contains(github.event.pull_request.title, 'minor') ||
+            contains(github.event.pull_request.title, 'deps') ||
+            contains(github.event.pull_request.title, 'ci') ||
+            contains(github.event.pull_request.title, 'docker')
+          )
+        run: |
+          gh pr merge --auto --squash "${{ github.event.pull_request.number }}"
+          echo "✅ Auto-merged Dependabot PR: ${{ github.event.pull_request.title }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment on major updates
+        if: |
+          github.actor == 'dependabot[bot]' &&
+          contains(github.event.pull_request.title, 'major') &&
+          (
+            steps.wait-for-ci.outputs.conclusion != 'success' ||
+            steps.wait-for-container-test.outputs.conclusion != 'success'
+          )
+        run: |
+          gh pr comment "${{ github.event.pull_request.number }}" --body "⚠️ This is a **major version update** that requires manual review. Please test thoroughly before merging."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
