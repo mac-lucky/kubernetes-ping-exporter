@@ -36,11 +36,15 @@ daemonset:
     rollingUpdate:
       maxUnavailable: 100%
 
-# Pod-level security context
+# Pod-level security context - enable unprivileged ICMP
 podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
   sysctls:
     - name: net.ipv4.ping_group_range
-      value: "0 2147483647"
+      value: "0 65535"
 
 # Container-level security context
 securityContext:
