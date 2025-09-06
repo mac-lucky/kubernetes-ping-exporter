@@ -17,6 +17,10 @@ service:
   port: 9107
   name: metrics
 
+serviceMonitor:
+  # Specifies whether a ServiceMonitor should be created
+  enabled: true
+
 serviceAccount:
   # Specifies whether a service account should be created
   create: true

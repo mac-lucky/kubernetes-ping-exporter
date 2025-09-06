@@ -1,11 +1,13 @@
+{{- if .Values.serviceMonitor.enabled }}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: ping-exporter
-  namespace: monitoring
+  namespace: {{ .Values.namespace }}
 spec:
   selector:
     matchLabels:
       app: ping-exporter
   endpoints:
-    - port: metrics
+    - port: {{ .Values.service.name }}
+{{- end }}
