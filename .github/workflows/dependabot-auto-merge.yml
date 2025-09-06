@@ -27,7 +27,7 @@ jobs:
           echo "author=${{ github.event.pull_request.user.login }}" >> $GITHUB_OUTPUT
 
       - name: Wait for CI checks
-        uses: fountainhead/action-wait-for-check@v1.1.0
+        uses: fountainhead/action-wait-for-check@v1.2.0
         id: wait-for-ci
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -37,7 +37,7 @@ jobs:
           intervalSeconds: 30
 
       - name: Wait for container test
-        uses: fountainhead/action-wait-for-check@v1.1.0
+        uses: fountainhead/action-wait-for-check@v1.2.0
         id: wait-for-container-test
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
