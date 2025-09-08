@@ -21,7 +21,7 @@ on:
 jobs:
   shared-ci-cd:
     name: Shared CI/CD Pipeline
-    uses: mac-lucky/actions-shared-workflows/.github/workflows/go-cicd-reusable.yml@main
+    uses: mac-lucky/actions-shared-workflows/.github/workflows/go-cicd-reusable.yml@master
     with:
       # Required parameters
       app_name: "kubernetes-ping-exporter"

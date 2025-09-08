@@ -8,7 +8,7 @@ on:
 jobs:
   shared-dependabot-auto-merge:
     name: Shared Dependabot Auto-Merge
-    uses: mac-lucky/actions-shared-workflows/.github/workflows/dependabot-auto-merge-reusable.yml@main
+    uses: mac-lucky/actions-shared-workflows/.github/workflows/dependabot-auto-merge-reusable.yml@master
     with:
       # Match the job names from the shared CI/CD pipeline
       code_analysis_check_name: "Code Quality & Security Analysis"
