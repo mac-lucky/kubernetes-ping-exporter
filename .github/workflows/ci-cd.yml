@@ -1,5 +1,5 @@
 ---
-name: Shared Workflow Test - Kubernetes Ping Exporter
+name: CI/CD Pipeline - Kubernetes Ping Exporter
 
 on:
   push:
@@ -19,8 +19,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  shared-ci-cd:
-    name: Shared CI/CD Pipeline
+  ci-cd:
+    name: CI/CD Pipeline
     uses: mac-lucky/actions-shared-workflows/.github/workflows/go-cicd-reusable.yml@master
     permissions:
       contents: read

@@ -1,89 +1,25 @@
 ---
-name: Dependabot Auto-Merge
+name: Shared Dependabot Auto-Merge - Kubernetes Ping Exporter
 
-# Temporarily disabled while testing shared workflows
-# on:
-#   pull_request:
-#     types: [opened, synchronize, reopened]
-
-# Manual trigger only for testing
 on:
-  workflow_dispatch:
-
-permissions:
-  contents: write
-  pull-requests: write
-  actions: write
-  checks: read
-  statuses: read
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 jobs:
-  auto-merge:
-    name: Auto-merge Dependabot PRs
-    runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Get PR details
-        id: pr-details
-        run: |
-          echo "title=${{ github.event.pull_request.title }}" >> $GITHUB_OUTPUT
-          echo "author=${{ github.event.pull_request.user.login }}" >> $GITHUB_OUTPUT
-
-      - name: Wait for CI checks
-        uses: fountainhead/action-wait-for-check@v1.2.0
-        id: wait-for-ci
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          checkName: "Code Quality Analysis"
-          ref: ${{ github.event.pull_request.head.sha }}
-          timeoutSeconds: 1800
-          intervalSeconds: 30
-
-      - name: Wait for container test
-        uses: fountainhead/action-wait-for-check@v1.2.0
-        id: wait-for-container-test
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          checkName: "Kubernetes Integration Test"
-          ref: ${{ github.event.pull_request.head.sha }}
-          timeoutSeconds: 1800
-          intervalSeconds: 30
-
-      - name: Enable auto-merge
-        if: |
-          steps.wait-for-ci.outputs.conclusion == 'success' &&
-          steps.wait-for-container-test.outputs.conclusion == 'success' &&
-          github.actor == 'dependabot[bot]' &&
-          (
-            contains(github.event.pull_request.title, 'patch') ||
-            contains(github.event.pull_request.title, 'minor') ||
-            contains(github.event.pull_request.title, 'deps') ||
-            contains(github.event.pull_request.title, 'ci') ||
-            contains(github.event.pull_request.title, 'docker')
-          )
-        run: |
-          gh pr merge --auto --squash --delete-branch "${{ github.event.pull_request.number }}" || {
-            echo "Failed to enable auto-merge, attempting direct merge since CI passed"
-            gh pr merge --squash --delete-branch "${{ github.event.pull_request.number }}"
-          }
-          echo "✅ Merged Dependabot PR and deleted source branch: ${{ github.event.pull_request.title }}"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Comment on major updates
-        if: |
-          github.actor == 'dependabot[bot]' &&
-          contains(github.event.pull_request.title, 'major') &&
-          (
-            steps.wait-for-ci.outputs.conclusion != 'success' ||
-            steps.wait-for-container-test.outputs.conclusion != 'success'
-          )
-        run: |
-          gh pr comment "${{ github.event.pull_request.number }}" --body "⚠️ This is a **major version update** that requires manual review. Please test thoroughly before merging."
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  shared-dependabot-auto-merge:
+    name: Shared Dependabot Auto-Merge
+    uses: mac-lucky/actions-shared-workflows/.github/workflows/dependabot-auto-merge-reusable.yml@master
+    with:
+      # Match the job names from the CI/CD pipeline (nested in reusable workflow)
+      code_analysis_check_name: "CI/CD Pipeline / Code Quality & Security Analysis"
+      container_test_check_name: "CI/CD Pipeline / Container Integration Test"
+      kubernetes_test_check_name: "CI/CD Pipeline / Kubernetes Integration Test"
+      
+      # Auto-merge configuration
+      enable_auto_merge: true
+      merge_method: "squash"
+      delete_branch: true
+      allow_patch: true
+      allow_minor: true
+      allow_major: false
+      additional_keywords: "deps,ci,docker"
