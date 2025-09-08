@@ -27,6 +27,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Extract Go version from go.mod
+        id: go-version
+        run: |
+          GO_VERSION=$(grep "^go " go.mod | cut -d' ' -f2)
+          echo "Found Go version: $GO_VERSION"
+          echo "version=$GO_VERSION" >> $GITHUB_OUTPUT
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -38,6 +45,8 @@ jobs:
           tags: kubernetes-ping-exporter:test
           push: false
           load: true
+          build-args: |
+            GO_VERSION=${{ steps.go-version.outputs.version }}
 
       - name: Setup Minikube with 2 nodes
         uses: medyagh/setup-minikube@latest
