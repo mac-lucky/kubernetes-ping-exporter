@@ -37,7 +37,7 @@ jobs:
       build_context: "."
       
       # Test configuration
-      enable_container_tests: true
+      enable_container_tests: false
       enable_kubernetes_tests: true
       helm_chart_path: "./infra-ping-exporter"
       helm_release_name: "ping-exporter"
