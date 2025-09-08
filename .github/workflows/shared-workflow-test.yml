@@ -1,0 +1,50 @@
+---
+name: Shared Workflow Test - Kubernetes Ping Exporter
+
+on:
+  push:
+    branches: ["master"]
+    paths-ignore:
+      - "*.md"
+      - "LICENSE"
+      - ".gitignore"
+  pull_request:
+    branches: ["master"]
+    paths-ignore:
+      - "*.md"
+      - "LICENSE"
+      - ".gitignore"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  shared-ci-cd:
+    name: Shared CI/CD Pipeline
+    uses: mac-lucky/actions-shared-workflows/.github/workflows/go-cicd-reusable.yml@main
+    with:
+      # Required parameters
+      app_name: "kubernetes-ping-exporter"
+      dockerhub_image: "maclucky/kubernetes-ping-exporter"
+      ghcr_image: "ghcr.io/mac-lucky/kubernetes-ping-exporter"
+      
+      # Build configuration
+      dockerfile_path: "./Dockerfile"
+      build_context: "."
+      
+      # Test configuration
+      enable_container_tests: true
+      enable_kubernetes_tests: true
+      helm_chart_path: "./infra-ping-exporter"
+      
+      # Security and quality
+      enable_security_scan: true
+      enable_sbom: true
+      
+      # Deployment
+      enable_auto_version: true
+      push_on_main: true
+    secrets:
+      DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
+      DOCKER_HUB_PASSWORD: ${{ secrets.DOCKER_HUB_PASSWORD }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
