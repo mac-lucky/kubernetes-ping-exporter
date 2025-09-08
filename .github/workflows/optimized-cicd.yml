@@ -1,21 +1,26 @@
 ---
 name: Optimized CI/CD - Kubernetes Ping Exporter
 
+# Temporarily disabled while testing shared workflows
+# "on":
+#   push:
+#     branches: ["master"]
+#     paths-ignore:
+#       - "*.md"
+#       - "LICENSE"
+#       - ".gitignore"
+#   pull_request:
+#     branches: ["master"]
+#     paths-ignore:
+#       - "*.md"
+#       - "LICENSE"
+#       - ".gitignore"
+#   release:
+#     types: [published]
+#   workflow_dispatch:
+
+# Manual trigger only for testing
 "on":
-  push:
-    branches: ["master"]
-    paths-ignore:
-      - "*.md"
-      - "LICENSE"
-      - ".gitignore"
-  pull_request:
-    branches: ["master"]
-    paths-ignore:
-      - "*.md"
-      - "LICENSE"
-      - ".gitignore"
-  release:
-    types: [published]
   workflow_dispatch:
 
 env:

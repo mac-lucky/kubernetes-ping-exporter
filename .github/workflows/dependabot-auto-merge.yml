@@ -1,9 +1,14 @@
 ---
 name: Dependabot Auto-Merge
 
+# Temporarily disabled while testing shared workflows
+# on:
+#   pull_request:
+#     types: [opened, synchronize, reopened]
+
+# Manual trigger only for testing
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 permissions:
   contents: write

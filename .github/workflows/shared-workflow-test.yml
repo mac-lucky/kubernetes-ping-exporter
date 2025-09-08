@@ -40,6 +40,8 @@ jobs:
       enable_container_tests: true
       enable_kubernetes_tests: true
       helm_chart_path: "./infra-ping-exporter"
+      helm_release_name: "ping-exporter"
+      app_label_selector: "ping-exporter"
       
       # Security and quality
       enable_security_scan: true
