@@ -23,5 +23,3 @@ jobs:
       allow_minor: true
       allow_major: false
       additional_keywords: "deps,ci,docker"
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
