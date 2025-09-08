@@ -64,16 +64,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Download container artifact
-        uses: actions/download-artifact@v5
-        with:
-          name: container-image
-          path: /tmp
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Load container image
-        run: |
-          gunzip -c /tmp/kubernetes-ping-exporter.tar.gz | docker load
-          docker image ls -a
+      - name: Build container for testing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          tags: kubernetes-ping-exporter:test
+          push: false
+          load: true
 
       - name: Setup Minikube with 2 nodes
         uses: medyagh/setup-minikube@latest
