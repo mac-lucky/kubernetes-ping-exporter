@@ -38,7 +38,7 @@ jobs:
       
       # Test configuration
       enable_container_tests: false
-      enable_kubernetes_tests: true
+      enable_kubernetes_tests: false
       helm_chart_path: "./infra-ping-exporter"
       helm_release_name: "ping-exporter"
       app_label_selector: "ping-exporter"
@@ -53,3 +53,104 @@ jobs:
     secrets:
       DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
       DOCKER_HUB_PASSWORD: ${{ secrets.DOCKER_HUB_PASSWORD }}
+
+  # Custom Kubernetes integration tests specific to ping-exporter
+  kubernetes-ping-exporter-test:
+    name: CI/CD Pipeline / Kubernetes Integration Test
+    runs-on: ubuntu-latest
+    needs: ci-cd
+    if: ${{ needs.ci-cd.result == 'success' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Download container artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: container-image
+          path: /tmp
+
+      - name: Load container image
+        run: |
+          gunzip -c /tmp/kubernetes-ping-exporter.tar.gz | docker load
+          docker image ls -a
+
+      - name: Setup Minikube with 2 nodes
+        uses: medyagh/setup-minikube@latest
+        with:
+          minikube-version: 'latest'
+          driver: docker
+          container-runtime: docker
+          kubernetes-version: v1.32.0
+          cpus: 2
+          memory: 2048m
+          addons: metrics-server
+          start-args: '--nodes=2'
+
+      - name: Load Docker image into Minikube
+        run: |
+          minikube image load kubernetes-ping-exporter:test
+
+      - name: Create monitoring namespace
+        run: |
+          kubectl create namespace monitoring || true
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4.3.1
+        with:
+          version: 'latest'
+
+      - name: Deploy ping-exporter with Helm
+        run: |
+          helm upgrade --install ping-exporter ./infra-ping-exporter \
+            --namespace monitoring \
+            --set image.tag=test \
+            --set image.repository=kubernetes-ping-exporter \
+            --set image.pullPolicy=Never \
+            --set serviceMonitor.enabled=false \
+            --wait --timeout=300s
+
+      - name: Verify deployment
+        run: |
+          echo "=== Checking deployment status ==="
+          kubectl get pods -n monitoring -l app=ping-exporter -o wide
+          kubectl get services -n monitoring
+          kubectl get configmap -n monitoring
+
+      - name: Wait for pods to be ready
+        run: |
+          kubectl wait --for=condition=ready pod -l app=ping-exporter \
+            -n monitoring --timeout=120s
+
+      - name: Check logs
+        run: |
+          echo "=== Application logs ==="
+          kubectl logs -l app=ping-exporter -n monitoring --tail=50
+
+      - name: Test metrics endpoint via port-forward
+        run: |
+          echo "=== Testing metrics endpoint ==="
+          kubectl port-forward -n monitoring svc/ping-exporter 9107:9107 &
+          PF_PID=$!
+          sleep 10
+          # Test metrics endpoint
+          response=$(curl -s http://localhost:9107/metrics)
+          if echo "$response" | grep -q "ping_loss_ratio"; then
+            echo "✅ Metrics endpoint working - ping_loss_ratio found"
+            echo "Sample metrics:"
+            echo "$response" | head -20
+          else
+            echo "❌ Metrics endpoint not working - ping_loss_ratio not found"
+            echo "Response received:"
+            echo "$response"
+            exit 1
+          fi
+          
+          # Cleanup
+          kill $PF_PID || true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          helm uninstall ping-exporter -n monitoring || true
+          kubectl delete namespace monitoring || true
