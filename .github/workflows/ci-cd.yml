@@ -97,6 +97,7 @@ jobs:
 
       - name: Check logs
         run: |
+          sleep 30
           echo "=== Application logs ==="
           kubectl logs -l app=ping-exporter -n monitoring --tail=50
 
