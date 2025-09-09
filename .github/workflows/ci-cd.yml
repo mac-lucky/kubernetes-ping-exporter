@@ -162,4 +162,6 @@ jobs:
       # Deployment
       enable_auto_version: true
       push_on_main: true
-    secrets: inherit
+    secrets:
+      DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
+      DOCKER_HUB_PASSWORD: ${{ secrets.DOCKER_HUB_PASSWORD }}
