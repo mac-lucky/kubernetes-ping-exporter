@@ -21,7 +21,7 @@ on:
 jobs:
   # Custom Kubernetes integration tests specific to ping-exporter
   kubernetes-ping-exporter-test:
-    name: CI/CD Pipeline / Kubernetes Integration Test
+    name: Kubernetes Integration Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
