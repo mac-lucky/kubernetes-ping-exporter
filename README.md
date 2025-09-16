@@ -1,5 +1,9 @@
 # Kubernetes Ping Exporter
 
+[![Docker Pulls](https://img.shields.io/docker/pulls/maclucky/kubernetes-ping-exporter)](https://hub.docker.com/r/maclucky/kubernetes-ping-exporter)
+[![Docker Image Version](https://img.shields.io/docker/v/maclucky/kubernetes-ping-exporter/latest)](https://hub.docker.com/r/maclucky/kubernetes-ping-exporter/tags)
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/mac-lucky/kubernetes-ping-exporter/ci-cd.yml)](https://github.com/mac-lucky/kubernetes-ping-exporter/actions)
+
 A Prometheus exporter that measures network latency between Kubernetes pods and external targets.
 
 ## Features
