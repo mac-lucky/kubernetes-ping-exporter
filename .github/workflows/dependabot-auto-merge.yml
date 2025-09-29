@@ -12,7 +12,7 @@ jobs:
     with:
       # Match the job names from the CI/CD pipeline (nested in reusable workflow)
       code_analysis_check_name: "CI/CD Pipeline / Code Quality & Security Analysis"
-      container_test_check_name: "CI/CD Pipeline / Container Integration Test"
+      container_test_check_name: ""
       kubernetes_test_check_name: "Kubernetes Integration Test"
       
       # Auto-merge configuration
