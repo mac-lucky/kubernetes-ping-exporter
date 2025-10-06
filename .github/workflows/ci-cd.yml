@@ -131,7 +131,6 @@ jobs:
 
   # Run CI/CD after tests pass
   ci-cd:
-    name: CI/CD Pipeline
     needs: kubernetes-ping-exporter-test
     uses: mac-lucky/actions-shared-workflows/.github/workflows/go-cicd-reusable.yml@master
     permissions:
