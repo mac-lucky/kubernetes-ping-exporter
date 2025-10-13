@@ -14,6 +14,13 @@ on:
       - "*.md"
       - "LICENSE"
       - ".gitignore"
+  pull_request_target:
+    branches: ["master"]
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - "*.md"
+      - "LICENSE"
+      - ".gitignore"
   release:
     types: [published]
   workflow_dispatch:
@@ -23,9 +30,16 @@ jobs:
   kubernetes-ping-exporter-test:
     name: Kubernetes Integration Test
     runs-on: ubuntu-latest
+    # Add permissions for dependabot PRs
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          # For pull_request_target, we need to checkout the PR head
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Extract Go version from go.mod
         id: go-version
