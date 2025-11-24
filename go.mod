@@ -24,12 +24,20 @@ require (
 	github.com/go-openapi/swag/fileutils v0.25.1 // indirect
 	github.com/go-openapi/swag/jsonname v0.25.1 // indirect
 	github.com/go-openapi/swag/jsonutils v0.25.3 // indirect
+<<<<<<< HEAD
+	github.com/go-openapi/swag/loading v0.25.1 // indirect
+=======
 	github.com/go-openapi/swag/loading v0.25.3 // indirect
+>>>>>>> origin/master
 	github.com/go-openapi/swag/mangling v0.25.1 // indirect
 	github.com/go-openapi/swag/netutils v0.25.1 // indirect
 	github.com/go-openapi/swag/stringutils v0.25.1 // indirect
 	github.com/go-openapi/swag/typeutils v0.25.3 // indirect
+<<<<<<< HEAD
+	github.com/go-openapi/swag/yamlutils v0.25.1 // indirect
+=======
 	github.com/go-openapi/swag/yamlutils v0.25.3 // indirect
+>>>>>>> origin/master
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
