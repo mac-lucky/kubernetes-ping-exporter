@@ -64,7 +64,7 @@ LABEL org.opencontainers.image.title="Kubernetes Ping Exporter" \
 ENTRYPOINT ["/app/kubernetes_ping_exporter"]
 
 # Development stage - includes shell and additional tools for debugging
-FROM alpine:3.22 AS development
+FROM alpine:3.23 AS development
 
 # Install tools, copy binary, create user in one layer
 RUN apk add --no-cache ca-certificates curl wget iputils && \
