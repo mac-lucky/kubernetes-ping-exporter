@@ -26,126 +26,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Custom Kubernetes integration tests specific to ping-exporter
-  kubernetes-ping-exporter-test:
-    name: Kubernetes Integration Test
-    runs-on: ubuntu-latest
-    # Add permissions for dependabot PRs
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-        with:
-          # For pull_request_target, we need to checkout the PR head
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
-
-      - name: Extract Go version from go.mod
-        id: go-version
-        run: |
-          GO_VERSION=$(grep "^go " go.mod | cut -d' ' -f2)
-          echo "Found Go version: $GO_VERSION"
-          echo "version=$GO_VERSION" >> $GITHUB_OUTPUT
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build container for testing
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          tags: kubernetes-ping-exporter:test
-          push: false
-          load: true
-          build-args: |
-            GO_VERSION=${{ steps.go-version.outputs.version }}
-
-      - name: Setup Minikube with 2 nodes
-        uses: medyagh/setup-minikube@latest
-        with:
-          minikube-version: 'latest'
-          driver: docker
-          container-runtime: docker
-          kubernetes-version: v1.32.0
-          cpus: 2
-          memory: 2048m
-          addons: metrics-server
-          start-args: '--nodes=2'
-
-      - name: Load Docker image into Minikube
-        run: |
-          minikube image load kubernetes-ping-exporter:test
-
-      - name: Create monitoring namespace
-        run: |
-          kubectl create namespace monitoring || true
-
-      - name: Install Helm
-        uses: azure/setup-helm@v4
-        with:
-          version: 'latest'
-
-      - name: Deploy ping-exporter with Helm
-        run: |
-          helm upgrade --install ping-exporter ./infra-ping-exporter \
-            --namespace monitoring \
-            --set image.tag=test \
-            --set image.repository=kubernetes-ping-exporter \
-            --set image.pullPolicy=Never \
-            --set serviceMonitor.enabled=false \
-            --wait --timeout=300s
-
-      - name: Verify deployment
-        run: |
-          echo "=== Checking deployment status ==="
-          kubectl get pods -n monitoring -l app=ping-exporter -o wide
-          kubectl get services -n monitoring
-          kubectl get configmap -n monitoring
-
-      - name: Wait for pods to be ready
-        run: |
-          kubectl wait --for=condition=ready pod -l app=ping-exporter \
-            -n monitoring --timeout=120s
-
-      - name: Check logs
-        run: |
-          sleep 30
-          echo "=== Application logs ==="
-          kubectl logs -l app=ping-exporter -n monitoring --tail=50
-
-      - name: Test metrics endpoint via port-forward
-        run: |
-          echo "=== Testing metrics endpoint ==="
-          kubectl port-forward -n monitoring svc/ping-exporter 9107:9107 &
-          PF_PID=$!
-          sleep 10
-          # Test metrics endpoint
-          response=$(curl -s http://localhost:9107/metrics)
-          if echo "$response" | grep -q "ping_loss_ratio"; then
-            echo "✅ Metrics endpoint working - ping_loss_ratio found"
-            echo "Sample metrics:"
-            echo "$response" | head -20
-          else
-            echo "❌ Metrics endpoint not working - ping_loss_ratio not found"
-            echo "Response received:"
-            echo "$response"
-            exit 1
-          fi
-          
-          # Cleanup
-          kill $PF_PID || true
-
-      - name: Cleanup
-        if: always()
-        run: |
-          helm uninstall ping-exporter -n monitoring || true
-          kubectl delete namespace monitoring || true
-
-  # Run CI/CD after tests pass
   ci-cd:
-    needs: kubernetes-ping-exporter-test
     uses: mac-lucky/actions-shared-workflows/.github/workflows/go-cicd-reusable.yml@master
     permissions:
       contents: read
@@ -163,10 +44,13 @@ jobs:
       
       # Test configuration
       enable_container_tests: false
-      enable_kubernetes_tests: false
+      enable_kubernetes_tests: true
       helm_chart_path: "./infra-ping-exporter"
       helm_release_name: "ping-exporter"
       app_label_selector: "ping-exporter"
+      enable_custom_metrics_test: true
+      metrics_port: "9107"
+      metrics_test_pattern: "ping_loss_ratio"
       
       # Security and quality
       enable_security_scan: true
