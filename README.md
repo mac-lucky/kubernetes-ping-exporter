@@ -1,9 +1,7 @@
 # Kubernetes Ping Exporter
 
-[![Docker Pulls](https://img.shields.io/docker/pulls/maclucky/kubernetes-ping-exporter)](https://hub.docker.com/r/maclucky/kubernetes-ping-exporter)
-[![Docker Image Version](https://img.shields.io/docker/v/maclucky/kubernetes-ping-exporter/latest)](https://hub.docker.com/r/maclucky/kubernetes-ping-exporter/tags)
 [![GitHub Actions Workflow Status](https://github.com/mac-lucky/kubernetes-ping-exporter/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/mac-lucky/kubernetes-ping-exporter/actions/workflows/ci-cd.yml)
-[![Platform](https://img.shields.io/badge/platform-amd64%20%7C%20arm64-blue)](https://hub.docker.com/r/maclucky/kubernetes-ping-exporter/tags)
+[![Platform](https://img.shields.io/badge/platform-amd64%20%7C%20arm64-blue)](https://github.com/mac-lucky/kubernetes-ping-exporter/pkgs/container/kubernetes-ping-exporter)
 
 A Prometheus exporter that measures network latency between Kubernetes pods and external targets.
 
@@ -89,13 +87,13 @@ docker build --target development -t kubernetes-ping-exporter:dev .
 
 ### Pre-built Images
 
-Pre-built images are available on Docker Hub and GitHub Container Registry:
+Pre-built images are available on GitHub Container Registry and Docker Hub:
 ```bash
+# GitHub Container Registry (recommended)
+docker pull ghcr.io/mac-lucky/kubernetes-ping-exporter:latest
+
 # Docker Hub
 docker pull maclucky/kubernetes-ping-exporter:latest
-
-# GitHub Container Registry
-docker pull ghcr.io/mac-lucky/kubernetes-ping-exporter:latest
 ```
 
 ### Multi-platform Build
