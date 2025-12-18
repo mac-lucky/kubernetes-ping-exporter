@@ -37,11 +37,11 @@ jobs:
       app_name: "kubernetes-ping-exporter"
       dockerhub_image: "maclucky/kubernetes-ping-exporter"
       ghcr_image: "ghcr.io/mac-lucky/kubernetes-ping-exporter"
-      
+
       # Build configuration
       dockerfile_path: "./Dockerfile"
       build_context: "."
-      
+
       # Test configuration
       enable_container_tests: false
       enable_kubernetes_tests: true
@@ -51,11 +51,11 @@ jobs:
       enable_custom_metrics_test: true
       metrics_port: "9107"
       metrics_test_pattern: "ping_loss_ratio"
-      
+
       # Security and quality
       enable_security_scan: true
       enable_sbom: true
-      
+
       # Deployment
       enable_auto_version: true
       push_on_main: true
