@@ -3,7 +3,7 @@ module kubernetes_ping_exporter
 go 1.25.0
 
 require (
-	github.com/prometheus-community/pro-bing v0.7.0
+	github.com/prometheus-community/pro-bing v0.8.0
 	github.com/prometheus/client_golang v1.23.2
 	k8s.io/apimachinery v0.35.0
 	k8s.io/client-go v0.35.0
