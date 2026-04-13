@@ -127,7 +127,7 @@ func getAdditionalIPs(clientset *kubernetes.Clientset, namespace string, loggedC
 	configMap, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.Background(), configMapName, metav1.GetOptions{})
 	if err != nil {
 		if !*loggedConfigMapError {
-			log.Printf("Warning: failed to get ConfigMap %s: %v (this warning will be logged only once)", configMapName, err)
+			log.Printf("Warning: failed to get ConfigMap %s: %v (this warning will be logged only once)", configMapName, err) // #nosec G706 -- configMapName is from env var/constant, not user input
 			*loggedConfigMapError = true
 		}
 		return nil, err
@@ -281,7 +281,11 @@ func main() {
 			metricsPort = defaultMetricsPort
 		}
 		http.Handle("/metrics", promhttp.Handler())
-		log.Fatal(http.ListenAndServe(":"+metricsPort, nil))
+		server := &http.Server{
+			Addr:              ":" + metricsPort,
+			ReadHeaderTimeout: 5 * time.Second,
+		}
+		log.Fatal(server.ListenAndServe())
 	}()
 
 	// Setup graceful shutdown
@@ -329,7 +333,7 @@ func main() {
 				wg.Add(1)
 				go func(t targetInfo) {
 					defer wg.Done()
-					log.Printf("Pinging target: %s from source IP: %s", t.ip, sourceIP)
+					log.Printf("Pinging target: %s from source IP: %s", t.ip, sourceIP) // #nosec G706 -- values from Kubernetes API, not user input
 					
 					stats, err := pingTarget(t.ip)
 					if err != nil {
