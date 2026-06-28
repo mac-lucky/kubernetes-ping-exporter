@@ -12,7 +12,7 @@ ARG COMMIT_SHA="unknown"
 ARG BUILD_DATE="unknown"
 
 # Build stage - Use the official Go image for building
-FROM --platform=${BUILDPLATFORM:-linux/amd64} golang:${GO_VERSION:-1.24.0}-alpine AS builder
+FROM --platform=${BUILDPLATFORM:-linux/amd64} golang:${GO_VERSION:-1.26.4}-alpine AS builder
 
 WORKDIR /src
 
