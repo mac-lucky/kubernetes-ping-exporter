@@ -36,6 +36,7 @@ jobs:
       contents: read
       packages: write
       security-events: write
+      actions: read
     with:
       # Required parameters
       app_name: "kubernetes-ping-exporter"
