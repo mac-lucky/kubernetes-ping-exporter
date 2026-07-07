@@ -1,3 +1,5 @@
+<img src="icon.svg" width="96" align="right" alt="">
+
 # Kubernetes Ping Exporter
 
 [![GitHub Actions Workflow Status](https://github.com/mac-lucky/kubernetes-ping-exporter/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/mac-lucky/kubernetes-ping-exporter/actions/workflows/ci-cd.yml)
