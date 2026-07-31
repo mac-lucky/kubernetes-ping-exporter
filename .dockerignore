@@ -1,0 +1,4 @@
+.git
+.github
+kubernetes_ping_exporter
+*.md

@@ -14,6 +14,13 @@ ARG BUILD_DATE="unknown"
 # Build stage - Use the official Go image for building
 FROM --platform=${BUILDPLATFORM:-linux/amd64} golang:${GO_VERSION:-1.26.5}-alpine AS builder
 
+# Re-declare build-scoped ARGs so they are visible inside this stage
+ARG TARGETOS
+ARG TARGETARCH
+ARG VERSION
+ARG COMMIT_SHA
+ARG BUILD_DATE
+
 WORKDIR /src
 
 # Install dependencies, copy files, and show version info in one layer
@@ -39,8 +46,29 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
   -o /app/kubernetes_ping_exporter && \
   echo "Binary built successfully"
 
+# Development stage - includes shell and additional tools for debugging
+FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS development
+
+# Install tools, copy binary, create user in one layer
+RUN apk add --no-cache ca-certificates curl wget iputils && \
+  addgroup -g 65532 -S nonroot && \
+  adduser -u 65532 -S nonroot -G nonroot
+COPY --from=builder /app/kubernetes_ping_exporter /app/kubernetes_ping_exporter
+
+USER 65532:65532
+ENV METRICS_PORT=9107 CHECK_INTERVAL_SECONDS=15
+EXPOSE ${METRICS_PORT}
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget -q --spider http://localhost:${METRICS_PORT}/metrics || exit 1
+ENTRYPOINT ["/app/kubernetes_ping_exporter"]
+
 # Runtime stage - Use Google's distroless image for maximum security
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:f5b485ea962d9bd1186b2f6b3a061191539b905b82ec395de78cbfae51f20e35 AS runner
+
+# Re-declare label-scoped ARGs so they are visible inside this stage
+ARG VERSION
+ARG COMMIT_SHA
+ARG BUILD_DATE
 
 # Copy ca-certificates and application binary in one layer
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
@@ -61,20 +89,4 @@ LABEL org.opencontainers.image.title="Kubernetes Ping Exporter" \
   org.opencontainers.image.source="https://github.com/mac-lucky/kubernetes-ping-exporter"
 
 # Use ENTRYPOINT for better signal handling
-ENTRYPOINT ["/app/kubernetes_ping_exporter"]
-
-# Development stage - includes shell and additional tools for debugging
-FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS development
-
-# Install tools, copy binary, create user in one layer
-RUN apk add --no-cache ca-certificates curl wget iputils && \
-  addgroup -g 65532 -S nonroot && \
-  adduser -u 65532 -S nonroot -G nonroot
-COPY --from=builder /app/kubernetes_ping_exporter /app/kubernetes_ping_exporter
-
-USER 65532:65532
-ENV METRICS_PORT=9107 CHECK_INTERVAL_SECONDS=15
-EXPOSE ${METRICS_PORT}
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget -q --spider http://localhost:${METRICS_PORT}/metrics || exit 1
 ENTRYPOINT ["/app/kubernetes_ping_exporter"]

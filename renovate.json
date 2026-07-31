@@ -1,4 +1,10 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>mac-lucky/actions-shared-workflows"]
+  "extends": ["github>mac-lucky/actions-shared-workflows"],
+  "packageRules": [
+    {
+      "matchManagers": ["helm-values"],
+      "enabled": false
+    }
+  ]
 }
