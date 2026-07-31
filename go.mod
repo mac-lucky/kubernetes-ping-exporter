@@ -1,6 +1,6 @@
 module kubernetes_ping_exporter
 
-go 1.26.4
+go 1.26.5
 
 require (
 	github.com/prometheus-community/pro-bing v0.9.0
