@@ -40,7 +40,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
   echo "Binary built successfully"
 
 # Runtime stage - Use Google's distroless image for maximum security
-FROM gcr.io/distroless/static-debian12:nonroot AS runner
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:f5b485ea962d9bd1186b2f6b3a061191539b905b82ec395de78cbfae51f20e35 AS runner
 
 # Copy ca-certificates and application binary in one layer
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
@@ -64,7 +64,7 @@ LABEL org.opencontainers.image.title="Kubernetes Ping Exporter" \
 ENTRYPOINT ["/app/kubernetes_ping_exporter"]
 
 # Development stage - includes shell and additional tools for debugging
-FROM alpine:3.24 AS development
+FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS development
 
 # Install tools, copy binary, create user in one layer
 RUN apk add --no-cache ca-certificates curl wget iputils && \

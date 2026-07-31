@@ -6,7 +6,7 @@ namespace: monitoring
 
 image:
   repository: maclucky/kubernetes-ping-exporter
-  tag: "latest"
+  tag: "latest@sha256:7c3d4e460800c81f3a53153a819eb795981f3db38d0196966a19e084492e61bf"
   pullPolicy: Always
 
 config:
