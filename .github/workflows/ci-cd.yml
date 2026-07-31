@@ -4,48 +4,38 @@ name: CI/CD Pipeline - Kubernetes Ping Exporter
 on:
   push:
     branches: ["master"]
-    paths-ignore:
-      - "*.md"
-      - "LICENSE"
-      - ".gitignore"
+    tags: ["v*"]
   pull_request:
     branches: ["master"]
-    paths-ignore:
-      - "*.md"
-      - "LICENSE"
-      - ".gitignore"
-  pull_request_target:
-    branches: ["master"]
-    types: [opened, synchronize, reopened]
-    paths-ignore:
-      - "*.md"
-      - "LICENSE"
-      - ".gitignore"
-  release:
-    types: [published]
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+  actions: read
+
 jobs:
   ci-cd:
     uses: mac-lucky/actions-shared-workflows/.github/workflows/go-cicd-reusable.yml@master
-    permissions:
-      contents: read
-      packages: write
-      security-events: write
-      actions: read
     with:
       # Required parameters
       app_name: "kubernetes-ping-exporter"
       dockerhub_image: "maclucky/kubernetes-ping-exporter"
       ghcr_image: "ghcr.io/mac-lucky/kubernetes-ping-exporter"
+      push_to_dockerhub: true
 
       # Build configuration
       dockerfile_path: "./Dockerfile"
       build_context: "."
+
+      # Go test configuration
+      enable_go_tests: true
+      go_test_args: "-race -count=1"
 
       # Test configuration
       enable_container_tests: false
@@ -60,10 +50,6 @@ jobs:
       # Security and quality
       enable_security_scan: true
       enable_sbom: true
-
-      # Deployment
-      enable_auto_version: true
-      push_on_main: true
     secrets:
       DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
       DOCKER_HUB_PASSWORD: ${{ secrets.DOCKER_HUB_PASSWORD }}

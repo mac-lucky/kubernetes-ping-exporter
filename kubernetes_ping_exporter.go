@@ -17,6 +17,7 @@ import (
 	probing "github.com/prometheus-community/pro-bing"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -78,9 +79,9 @@ type targetInfo struct {
 // Configuration constants
 const (
 	defaultCheckInterval = 15 // seconds
-	targetRefreshRate   = 4  // refresh targets every 4 iterations
-	defaultConfigMap    = "ping-exporter-config"
-	defaultMetricsPort = "9107"
+	targetRefreshRate    = 4  // refresh targets every 4 iterations
+	defaultConfigMap     = "ping-exporter-config"
+	defaultMetricsPort   = "9107"
 )
 
 func init() {
@@ -95,6 +96,22 @@ func init() {
 	)
 }
 
+// selectPeerPods filters a pod list down to ping targets: pods with a known
+// IP that isn't the current pod's own IP.
+func selectPeerPods(pods []corev1.Pod, currentPodIP string) []targetInfo {
+	var targets []targetInfo
+	for _, pod := range pods {
+		if pod.Status.PodIP != "" && pod.Status.PodIP != currentPodIP {
+			targets = append(targets, targetInfo{
+				ip:       pod.Status.PodIP,
+				nodeName: pod.Spec.NodeName,
+				podName:  pod.Name,
+			})
+		}
+	}
+	return targets
+}
+
 // getPodIPs retrieves IPs of other ping-exporter pods in the cluster
 func getPodIPs(clientset *kubernetes.Clientset, namespace, currentPodIP string) ([]targetInfo, error) {
 	pods, err := clientset.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
@@ -104,17 +121,25 @@ func getPodIPs(clientset *kubernetes.Clientset, namespace, currentPodIP string) 
 		return nil, fmt.Errorf("failed to list pods: %v", err)
 	}
 
+	return selectPeerPods(pods.Items, currentPodIP), nil
+}
+
+// parseAdditionalIPTargets converts the comma-separated "additional_ips" value
+// from the ping-exporter-config ConfigMap into targets, trimming whitespace
+// and skipping empty entries.
+func parseAdditionalIPTargets(raw string) []targetInfo {
 	var targets []targetInfo
-	for _, pod := range pods.Items {
-		if pod.Status.PodIP != "" && pod.Status.PodIP != currentPodIP {
+	for _, ip := range strings.Split(raw, ",") {
+		ip = strings.TrimSpace(ip)
+		if ip != "" {
 			targets = append(targets, targetInfo{
-				ip:       pod.Status.PodIP,
-				nodeName: pod.Spec.NodeName,
-				podName:  pod.Name,
+				ip:       ip,
+				nodeName: "external",
+				podName:  "external",
 			})
 		}
 	}
-	return targets, nil
+	return targets
 }
 
 // getAdditionalIPs retrieves additional target IPs from ConfigMap
@@ -135,18 +160,19 @@ func getAdditionalIPs(clientset *kubernetes.Clientset, namespace string, loggedC
 
 	var targets []targetInfo
 	if ips, ok := configMap.Data["additional_ips"]; ok {
-		for _, ip := range strings.Split(ips, ",") {
-			ip = strings.TrimSpace(ip)
-			if ip != "" {
-				targets = append(targets, targetInfo{
-					ip:       ip,
-					nodeName: "external",
-					podName:  "external",
-				})
-			}
-		}
+		targets = parseAdditionalIPTargets(ips)
 	}
 	return targets, nil
+}
+
+// combineTargets merges pod targets with additional targets. If the
+// additional targets could not be resolved, it falls back to pod targets
+// alone rather than failing target resolution entirely.
+func combineTargets(podTargets, additionalTargets []targetInfo, additionalErr error) []targetInfo {
+	if additionalErr != nil {
+		return podTargets
+	}
+	return append(podTargets, additionalTargets...)
 }
 
 // getAllTargets combines pod IPs and additional IPs from ConfigMap
@@ -157,12 +183,7 @@ func getAllTargets(clientset *kubernetes.Clientset, namespace, sourceIP string, 
 	}
 
 	additionalTargets, err := getAdditionalIPs(clientset, namespace, loggedConfigMapError)
-	if err != nil {
-		// Continue with just pod targets if additional IPs fail
-		return podTargets, nil
-	}
-
-	return append(podTargets, additionalTargets...), nil
+	return combineTargets(podTargets, additionalTargets, err), nil
 }
 
 // pingTarget performs ICMP ping to a target and returns statistics
@@ -171,39 +192,56 @@ func pingTarget(target string) (*probing.Statistics, error) {
 	if err != nil {
 		return nil, err
 	}
-	
-	pinger.Count = 5                       // Reduced from 10 to 5 for more frequent updates
+
+	pinger.Count = 5                         // Reduced from 10 to 5 for more frequent updates
 	pinger.Interval = time.Millisecond * 500 // Add interval between packets
-	pinger.Timeout = time.Second * 8       // Increased timeout to give packets more time to return
-	pinger.SetPrivileged(false)            // Use unprivileged ping for non-root containers
-	
+	pinger.Timeout = time.Second * 8         // Increased timeout to give packets more time to return
+	pinger.SetPrivileged(false)              // Use unprivileged ping for non-root containers
+
 	if err := pinger.Run(); err != nil {
 		return nil, err
 	}
-	
+
 	return pinger.Statistics(), nil
+}
+
+// pingLabels builds the Prometheus label set shared by all ping_* metrics for
+// a given source/destination pair.
+func pingLabels(sourceIP, destIP, sourceNode, destNode, sourcePod string) prometheus.Labels {
+	return prometheus.Labels{
+		"source":          sourceIP,
+		"destination":     destIP,
+		"source_nodename": sourceNode,
+		"dest_nodename":   destNode,
+		"source_podname":  sourcePod,
+	}
+}
+
+// pingMetricValues derives the ping_up and ping_loss_ratio gauge values from
+// raw ping statistics. The target counts as up when at least one probe was
+// answered; a fully-lost probe run is reported as 100% loss regardless of
+// what the pinger measured.
+func pingMetricValues(stats *probing.Statistics) (up float64, lossRatio float64) {
+	if stats.PacketsRecv > 0 {
+		return 1, stats.PacketLoss / 100
+	}
+	return 0, 1
 }
 
 // updateMetrics updates Prometheus metrics with ping results
 func updateMetrics(sourceIP, sourceNode, sourcePod string, target targetInfo, stats *probing.Statistics) {
-	labels := prometheus.Labels{
-		"source":          sourceIP,
-		"destination":     target.ip,
-		"source_nodename": sourceNode,
-		"dest_nodename":   target.nodeName,
-		"source_podname":  sourcePod,
-	}
+	labels := pingLabels(sourceIP, target.ip, sourceNode, target.nodeName, sourcePod)
+	up, lossRatio := pingMetricValues(stats)
 
-	if stats.PacketsRecv > 0 {
-		pingUp.With(labels).Set(1)
-		pingLossRatio.With(labels).Set(float64(stats.PacketLoss) / 100)
+	pingUp.With(labels).Set(up)
+	pingLossRatio.With(labels).Set(lossRatio)
+
+	if up == 1 {
 		pingRTTBest.With(labels).Set(float64(stats.MinRtt) / float64(time.Second))
 		pingRTTWorst.With(labels).Set(float64(stats.MaxRtt) / float64(time.Second))
 		pingRTTMean.With(labels).Set(float64(stats.AvgRtt) / float64(time.Second))
 		pingRTTStdDev.With(labels).Set(float64(stats.StdDevRtt) / float64(time.Second))
 	} else {
-		pingUp.With(labels).Set(0)
-		pingLossRatio.With(labels).Set(1)
 		// Delete RTT metrics when target is down
 		pingRTTBest.Delete(labels)
 		pingRTTWorst.Delete(labels)
@@ -223,20 +261,14 @@ func cleanupObsoleteMetrics(previousTargets *sync.Map, currentTargets []targetIn
 				break
 			}
 		}
-		
+
 		if !found {
 			log.Printf("Removing obsolete target from metrics: %s", targetIP)
 			previousTargets.Delete(targetIP)
 			nodeName, _ := value.(string)
-			
-			labels := prometheus.Labels{
-				"source":          sourceIP,
-				"destination":     targetIP,
-				"source_nodename": sourceNode,
-				"dest_nodename":   nodeName,
-				"source_podname":  sourcePod,
-			}
-			
+
+			labels := pingLabels(sourceIP, targetIP, sourceNode, nodeName, sourcePod)
+
 			// Delete all metrics for this target
 			pingUp.Delete(labels)
 			pingLossRatio.Delete(labels)
@@ -252,12 +284,12 @@ func cleanupObsoleteMetrics(previousTargets *sync.Map, currentTargets []targetIn
 func main() {
 	// Initialize Kubernetes client
 	config, err := rest.InClusterConfig()
-	if (err != nil) {
+	if err != nil {
 		log.Fatalf("Failed to get cluster config: %v", err)
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)
-	if (err != nil) {
+	if err != nil {
 		log.Fatalf("Failed to create client: %v", err)
 	}
 
@@ -313,7 +345,7 @@ func main() {
 			return
 		case <-ticker.C:
 			loopCounter++
-			
+
 			// Refresh targets periodically
 			if loopCounter%targetRefreshRate == 1 {
 				log.Println("Refreshing targets from Kubernetes API")
@@ -334,16 +366,16 @@ func main() {
 				go func(t targetInfo) {
 					defer wg.Done()
 					log.Printf("Pinging target: %s from source IP: %s", t.ip, sourceIP) // #nosec G706 -- values from Kubernetes API, not user input
-					
+
 					stats, err := pingTarget(t.ip)
 					if err != nil {
 						log.Printf("Error pinging %s: %v", t.ip, err)
 						return
 					}
-					
-					log.Printf("Ping result for target %s: Packets received: %d, Packet Loss: %0.2f%%", 
+
+					log.Printf("Ping result for target %s: Packets received: %d, Packet Loss: %0.2f%%",
 						t.ip, stats.PacketsRecv, stats.PacketLoss)
-					
+
 					updateMetrics(sourceIP, sourceNode, sourcePod, t, stats)
 					previousTargets.Store(t.ip, t.nodeName)
 				}(target)
