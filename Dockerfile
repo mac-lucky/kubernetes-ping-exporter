@@ -63,7 +63,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 ENTRYPOINT ["/app/kubernetes_ping_exporter"]
 
 # Runtime stage - Use Google's distroless image for maximum security
-FROM gcr.io/distroless/static-debian12:nonroot@sha256:1b7b9f0f0e0a1d2155f531db587cc48ec26aaf97ab64364225f5bf18a054e66a AS runner
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab AS runner
 
 # Re-declare label-scoped ARGs so they are visible inside this stage
 ARG VERSION
