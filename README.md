@@ -11,7 +11,7 @@ A Prometheus exporter that measures network latency between Kubernetes pods and 
 
 - Measures network latency between pods with `app=ping-exporter` label
 - Supports additional external IP targets via ConfigMap
-- Provides comprehensive ping metrics including RTT, packet loss, and reachability
+- Exports RTT, packet loss and reachability per target
 - Auto-discovery of ping-exporter pods within the same namespace
 
 ## Metrics
