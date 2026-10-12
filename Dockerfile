@@ -6,13 +6,16 @@ ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 ARG TARGETOS
 ARG TARGETARCH
-ARG GO_VERSION
+# Local builds only: CI passes the go.mod minor, which floats to its newest
+# patch. The default is here so Renovate can bump it, and a bump is what
+# triggers auto-tag.yml.
+ARG GO_VERSION=1.27.2
 ARG VERSION="dev"
 ARG COMMIT_SHA="unknown"
 ARG BUILD_DATE="unknown"
 
 # Build stage - Use the official Go image for building
-FROM --platform=${BUILDPLATFORM:-linux/amd64} golang:${GO_VERSION:-1.27.1}-alpine AS builder
+FROM --platform=${BUILDPLATFORM:-linux/amd64} golang:${GO_VERSION}-alpine AS builder
 
 # Re-declare build-scoped ARGs so they are visible inside this stage
 ARG TARGETOS
