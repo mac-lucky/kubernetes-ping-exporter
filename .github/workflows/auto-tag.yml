@@ -1,0 +1,50 @@
+name: Auto Tag
+
+# Cuts the next patch tag when a push to master changes what goes into the
+# image, so a merged Renovate bump of Go, the base image or a Go module ships
+# without a manual tag; the tag push runs ci-cd.yml's release. Minor and major
+# versions are still tagged by hand.
+#
+# A dispatch cuts a patch tag whatever changed: a rebuild picks up the newest
+# Go patch and base packages. The nightly GHCR scan in
+# mac-lucky/forgejo-fleet-ops dispatches it with `images` set when a rebuild
+# alone would clear the image's findings, and finds its own runs again by the
+# run name.
+#
+# The tag is pushed with a mac-lucky-ci GitHub App token (a tag pushed with
+# github.token would not start the release); the job token only reads.
+
+run-name: ${{ inputs.images && format('rebuild {0}', inputs.images) || '' }}
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - Dockerfile
+      - go.mod
+      - go.sum
+      - '*.go'
+      - '!*_test.go'
+  workflow_dispatch:
+    inputs:
+      images:
+        description: 'GHCR packages to rebuild, space-separated (set by the nightly scan)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auto-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    uses: mac-lucky/actions-shared-workflows/.github/workflows/auto-tag-reusable.yml@master
+    with:
+      mode: patch
+    secrets:
+      CI_APP_CLIENT_ID: ${{ secrets.CI_APP_CLIENT_ID }}
+      CI_APP_PRIVATE_KEY: ${{ secrets.CI_APP_PRIVATE_KEY }}
