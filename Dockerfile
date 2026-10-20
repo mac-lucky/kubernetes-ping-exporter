@@ -9,7 +9,7 @@ ARG TARGETARCH
 # Local builds only: CI passes the go.mod minor, which floats to its newest
 # patch. The default is here so Renovate can bump it, and a bump is what
 # triggers auto-tag.yml.
-ARG GO_VERSION=1.27.2
+ARG GO_VERSION=1.27.3
 ARG VERSION="dev"
 ARG COMMIT_SHA="unknown"
 ARG BUILD_DATE="unknown"
